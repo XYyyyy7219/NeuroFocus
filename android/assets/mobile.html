@@ -1,0 +1,84 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:">
+<title>NeuroFocus</title>
+<style>
+*{box-sizing:border-box}body{--bg:#f3f5ed;--card:#fdfff9;--ink:#213d33;--muted:#576e5f;--line:#d5e1d1;--accent:#36785d;--tint:#e1ecdb;margin:0;background:var(--bg);color:var(--ink);font-family:Roboto,"Noto Sans CJK SC",sans-serif}
+body.dark{--bg:#15251c;--card:#1d3026;--ink:#e7f0e3;--muted:#aec1ad;--line:#394e3e;--accent:#b0d4a6;--tint:#324a37;color-scheme:dark}
+header{background:#153228;color:#edf4e6;display:flex;align-items:center;justify-content:space-between;padding:15px 20px}header strong{font-size:20px;letter-spacing:-.6px}header span{font-size:12px;color:#bbd3bc}
+main{max-width:660px;margin:auto;padding:17px 16px 88px}h1{font-size:26px;letter-spacing:-.5px;margin:0 0 16px}h2{font-size:16px;margin:0}p{color:var(--muted);font-size:13px;line-height:1.5}section[hidden],button[hidden]{display:none}
+.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:17px;margin-bottom:15px}
+.row, .setting{display:flex;align-items:center;justify-content:space-between;gap:8px}.badge{font-size:12px;padding:5px 10px;border-radius:12px;background:var(--tint);color:var(--accent)}
+.dial{position:relative;width:min(67vw,280px);aspect-ratio:1;margin:16px auto 8px;display:grid;place-content:center;text-align:center}.dial svg{position:absolute;width:100%;height:100%;inset:0;transform:rotate(-90deg)}
+circle{fill:none;stroke-width:2}.track{stroke:var(--line)}#arc{stroke:var(--accent);stroke-linecap:round}.dial b{font-size:clamp(42px,12vw,60px);line-height:1.15;font-variant-numeric:tabular-nums;letter-spacing:-2px}.dial small{font-size:11px;letter-spacing:2px;color:var(--muted)}.dial label{font-size:13px;color:var(--muted);margin-bottom:8px}
+#note{text-align:center;min-height:20px}button,select,input{font:inherit;color:inherit}button{border:1px solid var(--line);border-radius:10px;background:var(--card);padding:10px;min-height:44px;cursor:pointer}button.primary{background:var(--accent);color:var(--card);font-weight:650;border:0;flex:1}
+.actions{display:flex;gap:7px}.metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin-top:10px}.metrics div{padding:12px 8px;border-radius:10px;background:var(--tint)}.metrics small{display:block;color:var(--muted);font-size:11px}.metrics b{font-size:18px;line-height:1.7}
+nav{position:fixed;bottom:0;left:0;right:0;display:flex;gap:5px;justify-content:center;background:var(--card);padding:7px 12px calc(7px + env(safe-area-inset-bottom));border-top:1px solid var(--line)}nav button{flex:1;max-width:200px;border:0;color:var(--muted)}nav button.on{background:var(--tint);color:var(--ink);font-weight:bold}
+.setting{min-height:51px;border-bottom:1px solid var(--line);font-size:14px}.setting:last-child{border-bottom:0}input[type=number],select{border:1px solid var(--line);border-radius:8px;background:var(--card);padding:7px;width:85px}input[type=checkbox]{width:22px;height:22px;accent-color:var(--accent)}#chart{height:125px;display:flex;align-items:end;gap:4px;margin:10px 0}.bar{flex:1;text-align:center;color:var(--muted);font-size:10px}.bar i{display:block;background:var(--accent);border-radius:4px;max-width:25px;margin:4px auto}.history{padding:12px 0;border-bottom:1px solid var(--line);font-size:14px}.history small{display:block;color:var(--muted);margin-top:4px}.empty{color:var(--muted)}
+</style></head><body>
+<header><strong>NeuroFocus</strong><span id="date"></span></header><main>
+<section id="timer"><h1>专注计时</h1><div class="card"><div class="row"><h2>本轮专注</h2><span class="badge" id="badge">待机</span></div>
+<div class="dial"><svg viewBox="0 0 100 100"><circle class="track" cx="50" cy="50" r="47"/><circle id="arc" cx="50" cy="50" r="47" stroke-dasharray="0.1 295.31"/></svg>
+<label id="stage">准备专注</label><b id="time">90:00</b><small>MIN / SEC</small></div>
+<p id="note">90 分钟专注 · 随机微休息</p><div class="actions"><button id="primary" class="primary">开始专注</button><button id="end" hidden>结束</button><button id="reset" hidden>重置</button></div></div>
+<div class="card"><h2>今日概览</h2><div class="metrics"><div><small>专注分钟</small><b id="actual">0</b></div><div><small>完成周期</small><b id="cycles">0</b></div><div><small>微休息次数</small><b id="micros">0</b></div></div></div></section>
+<section id="stats" hidden><h1>学习统计</h1><div class="card"><div class="row"><h2>实际专注趋势</h2><select aria-label="统计周期" id="period"><option>按日</option><option>按周</option><option>按月</option></select></div><div id="chart"></div><p id="total"></p></div>
+<div class="card"><div class="row"><h2>最近学习记录</h2><button id="export">导出 CSV</button></div><div id="history"></div></div></section>
+<section id="prefs" hidden><h1>偏好设置</h1><div class="card"><h2>计时方案</h2><p>修改后从下一轮开始使用。</p><div id="timing"></div></div><div class="card"><h2>声音与外观</h2><div id="options"></div><button id="preview">试听微休息提示音</button></div></section>
+</main><nav aria-label="主导航"><button class="on" data-page="timer">专注计时</button><button data-page="stats">学习统计</button><button data-page="prefs">偏好设置</button></nav>
+<script>
+"use strict";
+const $=id=>document.getElementById(id);
+const defaults={focus:90,long:20,low:3,high:5,micro:10,micro_on:true,inclusive:true,auto_long:true,audio:true,volume:45,notify:true,dark:false};
+let config={...defaults},data={days:{},history:[]},state={phase:"idle"},page="timer",lastRefresh=0;
+function field(group,key,title,min,max){
+  const label=document.createElement("label"),input=document.createElement("input");
+  label.className="setting";label.append(document.createTextNode(title));input.id="s-"+key;
+  input.type=typeof defaults[key]==="boolean"?"checkbox":"number";
+  if(input.type==="number"){input.min=min;input.max=max;input.inputMode="numeric";}
+  input.onchange=()=>Mobile.setting(key,input.type==="checkbox"?String(input.checked):input.value);
+  label.append(input);$(group).append(label);
+}
+for(const args of [["focus","专注周期（分钟）",1,720],["long","长休息（分钟）",1,180],["low","间隔下限（分钟）",1,120],["high","间隔上限（分钟）",1,120],["micro","微休息（秒）",1,300],["micro_on","启用随机微休息"],["inclusive","微休息计入专注周期"],["auto_long","自动进入长休息"]])field("timing",...args);
+for(const args of [["audio","启用提示音"],["volume","音量（%）",0,100],["notify","结束时发送通知"],["dark","深色模式"]])field("options",...args);
+const dayKey=d=>[d.getFullYear(),String(d.getMonth()+1).padStart(2,"0"),String(d.getDate()).padStart(2,"0")].join("-");
+const mins=n=>Math.round(n/6000)/10;
+function updateStats(){
+  const today=new Date(),row=data.days[dayKey(today)]||[0,0,0,0,0];
+  $("actual").textContent=mins(row[0]);$("cycles").textContent=row[4];$("micros").textContent=row[3];
+  if(page!=="stats")return;
+  const mode=$("period").selectedIndex,groups=[],count=mode===2?6:7;
+  for(let i=count-1;i>=0;i--){
+    let a=new Date(today),b=new Date(today),name;
+    if(mode===2){a=new Date(today.getFullYear(),today.getMonth()-i,1);b=new Date(a.getFullYear(),a.getMonth()+1,0);name=(a.getMonth()+1)+"月";}
+    else{a.setDate(today.getDate()-(mode===1?(today.getDay()+6)%7+i*7:i));b=new Date(a);if(mode===1)b.setDate(a.getDate()+6);name=(a.getMonth()+1)+"/"+a.getDate();}
+    const low=dayKey(a),high=dayKey(b);let ms=0;
+    for(const [day,v] of Object.entries(data.days))if(day>=low&&day<=high)ms+=v[0];
+    groups.push([name,mins(ms)]);
+  }
+  $("total").textContent=["今日","本周","本月"][mode]+"实际专注 "+groups[groups.length-1][1]+" 分钟";
+  const peak=Math.max(1,...groups.map(x=>x[1]));$("chart").replaceChildren();
+  for(const [name,v] of groups){const node=document.createElement("div");node.className="bar";node.append(v?String(v):"");const bar=document.createElement("i");bar.style.height=Math.max(2,Math.round(v/peak*75))+"px";node.append(bar,name);$("chart").append(node);}
+  $("history").replaceChildren();
+  if(!data.history.length)$("history").textContent="还没有学习记录";
+  for(const [start,status,f,m,l] of data.history){const el=document.createElement("div");el.className="history";el.textContent=new Date(start).toLocaleString("zh-CN",{hour12:false})+" · "+status;const sub=document.createElement("small");sub.textContent="专注 "+mins(f)+" 分 · 微休息 "+mins(m)+" 分 · 长休息 "+mins(l)+" 分";el.append(sub);$("history").append(el);}
+}
+window.render=function(s){
+  const previous=state.phase;state=s;
+  if(s.prefs){config={...defaults,...s.prefs};document.body.classList.toggle("dark",config.dark);
+    for(const key of Object.keys(defaults)){const inp=$("s-"+key);if(inp.type==="checkbox")inp.checked=config[key];else if(document.activeElement!==inp)inp.value=config[key];}}
+  if(s.stats){data=s.stats;lastRefresh=Date.now();updateStats();}
+  else if(previous!==s.phase||((page==="timer"||page==="stats")&&s.phase!=="idle"&&Date.now()-lastRefresh>10000)){lastRefresh=Date.now();Mobile.command("refresh");}
+  const idle=s.phase==="idle",title={idle:"待机",focus:"专注中",micro:"微休息",long:"长休息"}[s.phase],seconds=Math.ceil(s.remaining/1000);
+  $("date").textContent=new Date().toLocaleDateString("zh-CN",{month:"long",day:"numeric",weekday:"short"});
+  $("badge").textContent=s.paused?"已暂停":title;$("stage").textContent=idle?"准备专注":title;
+  $("time").textContent=String(Math.floor(seconds/60)).padStart(2,"0")+":"+String(seconds%60).padStart(2,"0");
+  $("arc").setAttribute("stroke-dasharray",Math.max(.1,s.progress*295.31)+" 295.31");
+  $("primary").textContent=idle?"开始专注":s.paused?"继续":"暂停";$("end").hidden=$("reset").hidden=idle;
+  $("note").textContent=s.paused?"计时已暂停":idle?(s.message||config.focus+" 分钟专注 · "+(config.micro_on?"随机微休息":"连续专注")):s.phase==="micro"?"放松，自然休息":s.phase==="long"?"专注周期已完成，自然休息":"周期进度 "+Math.floor(s.progress*100)+"%";
+};
+$("primary").onclick=()=>Mobile.command(state.phase==="idle"?"start":"toggle");
+for(const key of ["end","reset","preview","export"])$(key).onclick=()=>Mobile.command(key);
+$("period").onchange=updateStats;
+for(const btn of document.querySelectorAll("nav button"))btn.onclick=()=>{page=btn.dataset.page;for(const n of document.querySelectorAll("nav button")){const active=n===btn;n.classList.toggle("on",active);$(n.dataset.page).hidden=!active;}window.scrollTo(0,0);Mobile.command("refresh");};
+</script></body></html>

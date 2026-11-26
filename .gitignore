@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+.venv/
+/build/
+/dist/
+/data/
+/android/build/
+*.sqlite3*
+*.db
+*.apk
+*.p12
+*.jks
+*.keystore
+*.exe
+*.zip
+*.log
