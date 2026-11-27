@@ -77,8 +77,34 @@ def run():
                     w.navigate(1)
                     assert w.stats.table.rowCount()==1
                     store.export(qa/"smoke.csv")
+                    # Only the isolated smoke-test database receives these example spans.
+                    from time import time_ns
+                    from neurofocus.engine import Entry
+                    wall=time_ns()//1_000_000
+                    tag_a=store.tags.save("数学","#467D68")
+                    tag_b=store.tags.save("英语","#BA8056")
+                    sid=store.start(wall-600000)
+                    store.checkpoint(sid,[Entry("focus",wall-600000,420000)],wall-180000,tag_id=tag_a)
+                    store.checkpoint(sid,[Entry("focus",wall-180000,180000,1)],wall,"ended",tag_b)
+                    w.refresh_tags()
+                    w.tag_picker.activated.emit(w.tag_picker.findData(tag_b))
+                    assert controller.tag_id==tag_b
+                    w.stats.tabs.setCurrentIndex(1)
+                    dist=w.stats.distribution
+                    dist.range.setCurrentText("全部")
+                    assert dist.ring.total>=600000 and dist.table.rowCount()>=2
+                    assert any(tag.id==tag_a and ms==420000 for tag,ms,_,__ in dist.ring.rows)
+                    w.grab().save(str(qa/"tags-dark.png"))
+                    w.configure(dark=False)
+                    w.resize(780,660)
+                    app.processEvents()
+                    w.grab().save(str(qa/"tags-light.png"))
+                    dist.trend.mode.setCurrentText("月")
+                    store.export(qa/"tags.json")
+                    exported=json.loads((qa/"tags.json").read_text(encoding="utf-8"))
+                    assert sum(x["ms"] for x in exported["focus_spans"])==dist.ring.total
                     report=dict(success=True,platform=app.platformName(),
-                                frozen=getattr(sys,"frozen",False),history_rows=1,
+                                frozen=getattr(sys,"frozen",False),history_rows=1,tag_distribution=True,
                                 tray_available=w.tray.isSystemTrayAvailable())
                 except Exception:
                     report=dict(success=False,error=traceback.format_exc())

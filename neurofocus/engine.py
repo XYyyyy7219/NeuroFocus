@@ -9,6 +9,7 @@ class Entry:
     kind: str
     at: int       # local calendar attribution uses this Unix millisecond timestamp
     duration: int = 0
+    block: int = 0  # Controller assigns a number to each continuous focus stretch.
 
 
 class Engine:

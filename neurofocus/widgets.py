@@ -67,5 +67,8 @@ def stylesheet(c):
     QTableWidget {{background:{c['card']};color:{c['ink']};border:0;gridline-color:{c['line']};}}
     QHeaderView::section {{background:{c['tint']};color:{c['ink']};border:0;padding:6px;}}
     QScrollArea {{border:0;}}
+    QTabWidget::pane {{border:0;background:{c['bg']};}}
+    QTabBar::tab {{background:{c['bg']};color:{c['muted']};border:0;border-bottom:2px solid {c['line']};padding:7px 16px;}}
+    QTabBar::tab:selected {{color:{c['accent']};border-bottom-color:{c['accent']};font-weight:600;}}
     QToolTip {{background:{c['card']};color:{c['ink']};border:1px solid {c['line']};}}
     """

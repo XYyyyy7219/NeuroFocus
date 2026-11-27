@@ -5,7 +5,8 @@ from datetime import date
 from PySide6.QtCore import Qt, QEvent, QSize, QTimer
 from PySide6.QtGui import QPalette, QColor
 from PySide6.QtWidgets import (QApplication,QMainWindow,QWidget,QFrame,QStackedWidget,
-    QMenu,QSystemTrayIcon,QMessageBox)
+    QMenu,QSystemTrayIcon,QMessageBox,QComboBox)
+from .tag_ui import swatch, edit_tag, TagManager
 from .visual import LIGHT,DARK,icon,stamp,Dial,Terrain
 from .widgets import box,label,button,card,stylesheet
 from .pages import Preferences,Statistics,duration
@@ -150,6 +151,15 @@ class Window(QMainWindow):
         center=box(hero,margins=(20,14,20,16),spacing=3)
         row=box(horizontal=True)
         row.addWidget(label("本轮专注","head"))
+        self.tag_picker=QComboBox()
+        self.tag_picker.setAccessibleName("当前学习标签")
+        self.tag_picker.setToolTip("选择学习标签，可在专注中切换")
+        self.tag_picker.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        self.tag_picker.setMinimumContentsLength(5)
+        self.tag_picker.setMaximumWidth(190)
+        self.refresh_tags()
+        self.tag_picker.activated.connect(self.pick_tag)
+        row.addWidget(self.tag_picker)
         row.addStretch()
         self.badge=label("","pill")
         row.addWidget(self.badge)
@@ -197,6 +207,35 @@ class Window(QMainWindow):
             metrics.addWidget(tile,1)
         col.addLayout(metrics)
         self.stack.addWidget(page)
+
+    def refresh_tags(self):
+        picker=self.tag_picker
+        picker.clear()
+        for tag in self.ctrl.store.tags.all():
+            if not tag.archived:
+                picker.addItem(swatch(tag.color),tag.name,tag.id)
+        picker.insertSeparator(picker.count())
+        picker.addItem("＋ 新建学习标签","new")
+        picker.addItem("管理标签…","manage")
+        picker.setCurrentIndex(picker.findData(self.ctrl.tag_id))
+
+    def change_tag(self,key):
+        self.notify_events(self.ctrl.select_tag(key))
+        self.refresh_tags()
+        self.render()
+
+    def pick_tag(self,index):
+        key=self.tag_picker.itemData(index)
+        self.refresh_tags()
+        try:
+            if key=="manage":
+                TagManager(self).exec()
+            else:
+                if key=="new": key=edit_tag(self)
+                if key is not None: self.change_tag(key)
+        except (ValueError,sqlite3.Error) as exc:
+            QMessageBox.warning(self,"无法切换标签",str(exc))
+        self.refresh_tags()
 
     def navigate(self,index):
         self.stack.setCurrentIndex(index)
@@ -250,7 +289,9 @@ class Window(QMainWindow):
             self.last_message="提示音播放失败，请检查系统音频输出"
 
     def advance(self,action=None):
-        events=self.ctrl.update(action)
+        self.notify_events(self.ctrl.update(action))
+
+    def notify_events(self,events):
         if events:
             last=events[-1]
             self.last_message=NOTICES[last]

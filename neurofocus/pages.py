@@ -1,8 +1,11 @@
 from datetime import date, datetime, timedelta
+import sqlite3
+from pathlib import Path
+from .distribution import Distribution
 from PySide6.QtCore import Qt, QRectF
 from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import (QWidget,QCheckBox,QComboBox,QSpinBox,QSlider,QScrollArea,
-    QTableWidget,QTableWidgetItem,QHeaderView,QAbstractItemView,QFileDialog,QMessageBox)
+    QTableWidget,QTableWidgetItem,QHeaderView,QAbstractItemView,QFileDialog,QMessageBox,QTabWidget)
 from .config import LIMITS, VOICES
 from .storage import STATUS
 from .visual import font, LIGHT, DARK
@@ -169,7 +172,15 @@ class Statistics(QWidget):
         super().__init__()
         self.w=window
         self.offset=0
-        layout=box(self,spacing=12)
+        outer=box(self)
+        self.tabs=QTabWidget()
+        outer.addWidget(self.tabs)
+        overview=QWidget()
+        self.tabs.addTab(overview,"学习概览")
+        self.distribution=Distribution(window)
+        self.tabs.addTab(self.distribution,"标签分布")
+        self.tabs.currentChanged.connect(self.refresh)
+        layout=box(overview,margins=(0,8,0,0),spacing=12)
         top=card()
         col=box(top,margins=16)
         row=box(horizontal=True)
@@ -191,7 +202,7 @@ class Statistics(QWidget):
         row=box(horizontal=True)
         row.addWidget(label("学习记录","head"))
         row.addStretch()
-        self.export_button=button("导出 CSV",handler=self.export)
+        self.export_button=button("导出记录",handler=self.export)
         row.addWidget(self.export_button)
         col.addLayout(row)
         self.table=QTableWidget(0,5)
@@ -219,6 +230,9 @@ class Statistics(QWidget):
         self.refresh()
 
     def refresh(self,*_):
+        if self.tabs.currentIndex()==1:
+            self.distribution.refresh()
+            return
         mode=self.period.currentIndex()
         groups=periods(mode,date.today())
         rows=self.w.ctrl.store.daily(groups[0][0],groups[-1][1])
@@ -240,10 +254,12 @@ class Statistics(QWidget):
         self.info.setText(f"第 {self.offset+1}–{self.offset+len(visible)} 条" if visible else "还没有学习记录")
 
     def export(self):
-        path,_=QFileDialog.getSaveFileName(self,"导出学习记录","NeuroFocus-学习记录.csv","CSV (*.csv)")
+        path,selected=QFileDialog.getSaveFileName(self,"导出学习记录","NeuroFocus-学习记录","CSV (*.csv);;JSON (*.json)")
         if path:
             try:
+                suffix=".json" if selected.startswith("JSON") else ".csv"
+                if Path(path).suffix.lower() not in (".csv",".json"): path+=suffix
                 self.w.advance("flush")
                 self.w.ctrl.store.export(path)
-            except OSError as exc:
+            except (OSError,sqlite3.Error) as exc:
                 QMessageBox.warning(self,"导出失败",str(exc))

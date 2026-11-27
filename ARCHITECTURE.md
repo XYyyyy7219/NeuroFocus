@@ -27,7 +27,15 @@ QueryUnbiasedInterruptTime 给出排除 Windows 睡眠、休眠的累计时间�
 
 桌面端 SQLite 使用 WAL 与 FULL 同步。阶段切换、暂停、停止及正常退出会提交，活动期间通常每 5 秒提交一次。事务成功后才清空待写区间。写入中断则回滚，下一次提交复用缓冲。系统强杀可能损失最近一次成功检查点以后的时间。启动时，在同一数据目录取得进程锁后，将上次未结束的记录标为中断。
 
-## 手机端
+## Windows 标签与分类统计
+
+`tags.py` 在单个 SQLite 写事务内从旧版 schema 0 迁移到版本 1。`tags` 保存稳定整数 ID、名称、颜色、归档状态和顺序。ID 0 对应内置「未分类」。`tag_choice` 记录下次启动选中的标签。`focus_spans` 以周期、日期、连续学习段编号和标签 ID 标识一个片段。迁移将原 `days.focus` 中的正时长按周期和日期导入未分类，旧记录的起止时间保留空值。数据库版本号与回填在同一事务中提交。
+
+切换标签先由 Controller 用原标签结清待写时长，成功后才切换 ID 并开启新段。暂停后继续、微休息后恢复都会开启新段。检查点只把 focus 时长按本地午夜切分到片段表，与原有周期状态及每日汇总一并提交。持续学习时反复更新同一个片段的结束时间及累计毫秒数，避免每个界面刷新都产生一条记录。
+
+`tag_ui.py` 提供标签管理和分页历史，`distribution.py` 用 Qt 绘制环图、条形和堆叠柱。分布、趋势与详情均按已提交的有效学习毫秒数计算，旧版每日汇总继续供原统计页使用。CSV 以周期、日期、标签聚合；JSON 的 `records` 使用相同口径，`focus_spans` 保留段明细，`tags` 包含归档标签。`started`、`ended` 为 Unix 毫秒，`ms` 为实际学习时长。
+
+## Android 实现
 
 本地 HTML/CSS 提供移动端界面，Java Activity 只向随包资源提供有限的设置、计时与导出命令。Manifest 未声明网络权限。前台服务独立于 Activity，使用 elapsedRealtime 和同样的阶段边界规则。手机锁屏仍应计入学习，活动阶段使用有超时的部分唤醒锁，暂停和结束释放。Android 内存回收或强行停止后恢复已提交记录，下一次手动开启新一轮。厂商对后台服务的具体限制需真机检查。[Android 时钟文档](https://developer.android.com/reference/android/os/SystemClock) · [Android 前台服务](https://developer.android.com/develop/background-work/services/fgs/service-types)
 

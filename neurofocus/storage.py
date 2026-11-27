@@ -1,6 +1,10 @@
 import csv
+import json
 import sqlite3
+from dataclasses import asdict
+from pathlib import Path
 from datetime import date, datetime, time, timedelta
+from .tags import Tags, migrate
 
 
 METRICS = ("focus", "micro", "long", "micro_count", "completed")
@@ -10,6 +14,16 @@ def day_at(ms):
     return datetime.fromtimestamp(ms / 1000).date()
 
 
+def day_parts(at, duration):
+    while duration:
+        day = day_at(at)
+        midnight = datetime.combine(day + timedelta(days=1), time())
+        step = min(duration, round(midnight.timestamp() * 1000) - at)
+        yield str(day), at, step
+        at += step
+        duration -= step
+
+
 def buckets(entries):
     result = {}
     for entry in entries:
@@ -17,13 +31,8 @@ def buckets(entries):
         if entry.kind in ("micro_start", "complete"):
             row = result.setdefault(str(day_at(at)), [0] * 5)
             row[3 if entry.kind == "micro_start" else 4] += 1
-        while duration:
-            day = day_at(at)
-            midnight = datetime.combine(day + timedelta(days=1), time())
-            step = min(duration, round(midnight.timestamp() * 1000) - at)
-            result.setdefault(str(day), [0] * 5)[METRICS.index(entry.kind)] += step
-            at += step
-            duration -= step
+        for day, _, step in day_parts(at, duration):
+            result.setdefault(day, [0] * 5)[METRICS.index(entry.kind)] += step
     return result
 
 
@@ -43,6 +52,8 @@ class Store:
                 micro_count INTEGER NOT NULL, completed INTEGER NOT NULL,
                 PRIMARY KEY(sid,day));
         """)
+        migrate(self.db)
+        self.tags = Tags(self.db)
         with self.db:
             self.db.execute("UPDATE sessions SET status='interrupted' WHERE status='active'")
 
@@ -51,9 +62,21 @@ class Store:
             return self.db.execute("INSERT INTO sessions(started,updated,status) VALUES(?,?,'active')",
                                    (wall, wall)).lastrowid
 
-    def checkpoint(self, sid, entries, wall, status="active"):
+    def checkpoint(self, sid, entries, wall, status="active", tag_id=0):
         rows = buckets(entries)
         with self.db:
+            spans = {}
+            for entry in entries:
+                if entry.kind != "focus":
+                    continue
+                for day, at, step in day_parts(entry.at,entry.duration):
+                    span = spans.setdefault((day,entry.block),[at,at,0])
+                    span[1] = at+step
+                    span[2] += step
+            for (day,block),(start,end,ms) in spans.items():
+                self.db.execute("""INSERT INTO focus_spans VALUES(?,?,?,?,?,?,?)
+                    ON CONFLICT(sid,day,block,tag) DO UPDATE SET ended=excluded.ended,
+                    ms=focus_spans.ms+excluded.ms""",(sid,day,block,tag_id,start,end,ms))
             for day, values in rows.items():
                 self.db.execute("""INSERT INTO days VALUES (?,?,?,?,?,?,?)
                     ON CONFLICT(sid,day) DO UPDATE SET focus=focus+excluded.focus,
@@ -74,16 +97,38 @@ class Store:
             GROUP BY sessions.id ORDER BY sessions.id DESC LIMIT ? OFFSET ?""", (limit, offset)))
 
     def export(self, path):
+        headers = ["周期ID","开始时间","最后记录时间","状态","统计日期","实际专注秒",
+                   "微休息秒","长休息秒","微休息次数","完成周期数","标签ID","标签名称","标签颜色"]
+        if Path(path).suffix.lower() == ".json":
+            segments = self.db.execute("""SELECT sid,day,block,tag,started,ended,ms
+                FROM focus_spans ORDER BY sid,day,block""")
+            names = [col[0] for col in segments.description]
+            payload = dict(version=1,tags=[asdict(t) for t in self.tags.all()],
+                records=[dict(zip(headers,row)) for row in self._export_rows()],
+                focus_spans=[dict(zip(names,row)) for row in segments])
+            Path(path).write_text(json.dumps(payload,ensure_ascii=False,indent=2),encoding="utf-8")
+            return
         with open(path, "w", encoding="utf-8-sig", newline="") as out:
             writer = csv.writer(out)
-            writer.writerow(["周期ID","开始时间","最后记录时间","状态","统计日期","实际专注秒","微休息秒",
-                             "长休息秒","微休息次数","完成周期数"])
-            for sid, start, end, status, day, focus, micro, long, count, completed in self.db.execute("""
-                SELECT id,started,updated,status,day,focus,micro,long,micro_count,completed
-                FROM sessions LEFT JOIN days ON id=sid ORDER BY id,day"""):
-                fmt = lambda ms: datetime.fromtimestamp(ms / 1000).astimezone().isoformat(timespec="seconds")
-                writer.writerow([sid, fmt(start), fmt(end), STATUS[status], day or str(day_at(start)),
-                                 *[(n or 0)/1000 for n in (focus,micro,long)], count or 0, completed or 0])
+            writer.writerow(headers)
+            writer.writerows(self._export_rows())
+
+    def _export_rows(self):
+        tags = {t.id:t for t in self.tags.all()}
+        previous = None
+        for sid,start,end,status,day,key,focus,micro,long,count,completed in self.db.execute("""
+            WITH totals AS (SELECT sid,day,tag,sum(ms) AS ms FROM focus_spans GROUP BY sid,day,tag)
+            SELECT s.id,s.started,s.updated,s.status,d.day,coalesce(t.tag,0),coalesce(t.ms,0),
+                   d.micro,d.long,d.micro_count,d.completed
+            FROM sessions s LEFT JOIN days d ON d.sid=s.id
+            LEFT JOIN totals t ON t.sid=s.id AND t.day=d.day ORDER BY s.id,d.day,t.tag"""):
+            if previous == (sid,day):
+                micro,long,count,completed = 0,0,0,0
+            previous = sid,day
+            tag = tags[key]
+            fmt = lambda ms: datetime.fromtimestamp(ms/1000).astimezone().isoformat(timespec="seconds")
+            yield [sid,fmt(start),fmt(end),STATUS[status],day or str(day_at(start)),focus/1000,
+                   (micro or 0)/1000,(long or 0)/1000,count or 0,completed or 0,key,tag.name,tag.color]
 
 
 STATUS = dict(active="进行中", done="已完成", ended="手动结束", reset="已重置",
