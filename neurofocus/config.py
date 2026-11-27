@@ -22,8 +22,14 @@ class Settings:
     pinned: bool = False
     notify: bool = True
     tray: bool = True
+    calendar_low: int = 30
+    calendar_mid: int = 90
+    calendar_high: int = 180
 
     def __post_init__(self):
+        cuts=(self.calendar_low,self.calendar_mid,self.calendar_high)
+        if any(type(n) is not int for n in cuts) or not 0<cuts[0]<cuts[1]<cuts[2]<=1440:
+            raise ValueError("日历阈值须按升序排列，范围 1–1440 分钟")
         for name, bounds in LIMITS.items():
             value = getattr(self, name)
             if type(value) is not int or not bounds[0] <= value <= bounds[1]:

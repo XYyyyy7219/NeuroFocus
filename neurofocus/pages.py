@@ -2,6 +2,7 @@ from datetime import date, datetime, timedelta
 import sqlite3
 from pathlib import Path
 from .distribution import Distribution
+from .calendar_ui import StudyCalendar
 from PySide6.QtCore import Qt, QRectF
 from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import (QWidget,QCheckBox,QComboBox,QSpinBox,QSlider,QScrollArea,
@@ -179,6 +180,8 @@ class Statistics(QWidget):
         self.tabs.addTab(overview,"学习概览")
         self.distribution=Distribution(window)
         self.tabs.addTab(self.distribution,"标签分布")
+        self.calendar=StudyCalendar(window)
+        self.tabs.addTab(self.calendar,"学习日历")
         self.tabs.currentChanged.connect(self.refresh)
         layout=box(overview,margins=(0,8,0,0),spacing=12)
         top=card()
@@ -230,6 +233,9 @@ class Statistics(QWidget):
         self.refresh()
 
     def refresh(self,*_):
+        if self.tabs.currentWidget() is self.calendar:
+            self.calendar.refresh()
+            return
         if self.tabs.currentIndex()==1:
             self.distribution.refresh()
             return

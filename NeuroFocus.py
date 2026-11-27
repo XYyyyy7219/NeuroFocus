@@ -103,7 +103,22 @@ def run():
                     store.export(qa/"tags.json")
                     exported=json.loads((qa/"tags.json").read_text(encoding="utf-8"))
                     assert sum(x["ms"] for x in exported["focus_spans"])==dist.ring.total
+                    w.stats.tabs.setCurrentWidget(w.stats.calendar)
+                    cal=w.stats.calendar
+                    assert cal.data.ms>=600000
+                    cal.filter={tag_a}
+                    cal.refresh()
+                    assert cal.data.ms==420000
+                    cal.filter=None
+                    cal.refresh()
+                    w.resize(1000,820)
+                    app.processEvents()
+                    w.grab().save(str(qa/"calendar-light.png"))
+                    w.configure(dark=True)
+                    app.processEvents()
+                    w.grab().save(str(qa/"calendar-dark.png"))
                     report=dict(success=True,platform=app.platformName(),
+                                calendar=True,
                                 frozen=getattr(sys,"frozen",False),history_rows=1,tag_distribution=True,
                                 tray_available=w.tray.isSystemTrayAvailable())
                 except Exception:
