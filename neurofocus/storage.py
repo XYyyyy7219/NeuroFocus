@@ -5,6 +5,7 @@ from dataclasses import asdict
 from pathlib import Path
 from datetime import date, datetime, time, timedelta
 from .tags import Tags, migrate
+from . import history
 
 
 METRICS = ("focus", "micro", "long", "micro_count", "completed")
@@ -31,6 +32,8 @@ def buckets(entries):
         if entry.kind in ("micro_start", "complete"):
             row = result.setdefault(str(day_at(at)), [0] * 5)
             row[3 if entry.kind == "micro_start" else 4] += 1
+        if entry.kind not in METRICS[:3]:
+            continue
         for day, _, step in day_parts(at, duration):
             result.setdefault(day, [0] * 5)[METRICS.index(entry.kind)] += step
     return result
@@ -39,6 +42,7 @@ def buckets(entries):
 class Store:
     def __init__(self, path):
         self.db = sqlite3.connect(path)
+        history.backup_if_needed(self.db,path)
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.execute("PRAGMA synchronous=FULL")
         self.db.execute("PRAGMA foreign_keys=ON")
@@ -53,19 +57,30 @@ class Store:
                 PRIMARY KEY(sid,day));
         """)
         migrate(self.db)
+        history.install(self.db)
         self.tags = Tags(self.db)
         with self.db:
             self.db.execute("UPDATE sessions SET status='interrupted' WHERE status='active'")
 
-    def start(self, wall):
+    def start(self, wall, settings=None, tag=0):
         with self.db:
-            return self.db.execute("INSERT INTO sessions(started,updated,status) VALUES(?,?,'active')",
+            sid = self.db.execute("INSERT INTO sessions(started,updated,status) VALUES(?,?,'active')",
                                    (wall, wall)).lastrowid
+            if settings is not None:
+                config = {k:getattr(settings,k) for k in ("focus","long","micro","low","high","micro_on","inclusive","auto_long")}
+                self.db.execute("INSERT INTO session_protocol(sid,config) VALUES(?,?)",(sid,json.dumps(config)))
+                self.db.execute("INSERT INTO study_events(sid,at,kind,tag) VALUES(?,?,'start',?)",(sid,wall,tag))
+            return sid
 
     def checkpoint(self, sid, entries, wall, status="active", tag_id=0):
         rows = buckets(entries)
         with self.db:
             spans = {}
+            self.db.executemany("INSERT INTO study_events(sid,at,kind,tag) VALUES(?,?,?,?)",
+                ((sid,e.at,e.kind,tag_id) for e in entries if e.kind in history.EVENTS))
+            paused = sum(e.duration for e in entries if e.kind=="paused_ms")
+            if paused:
+                self.db.execute("UPDATE session_protocol SET paused_ms=paused_ms+? WHERE sid=?",(paused,sid))
             for entry in entries:
                 if entry.kind != "focus":
                     continue

@@ -117,8 +117,35 @@ def run():
                     w.configure(dark=True)
                     app.processEvents()
                     w.grab().save(str(qa/"calendar-dark.png"))
+                    from datetime import datetime,date,timedelta
+                    from neurofocus.history import activities,save_note
+                    h=w.archive
+                    for i in range(16):
+                        d=date.today()-timedelta(days=i//4)
+                        at=int(datetime(d.year,d.month,d.day,8+(i%4)*2).timestamp()*1000)
+                        span=(22+i)*60000
+                        key=store.start(at)
+                        store.checkpoint(key,[Entry("focus",at,span)],at+span,"ended",tag_a)
+                        a=activities(store.db,key)[0]
+                        if i%3:
+                            save_note(store.db,a.key,("特征值与特征向量","用一个二阶矩阵验证了推导。","","从例题三继续","良好"))
+                    h.open_day(date.today())
+                    w.configure(dark=False)
+                    app.processEvents()
+                    assert h.timeline.rows
+                    w.grab().save(str(qa/"learning-timeline.png"))
+                    h.tabs.setCurrentIndex(1)
+                    h.query.setText("二阶")
+                    assert h.model.rowCount()==10
+                    app.processEvents()
+                    w.grab().save(str(qa/"learning-journal.png"))
+                    h.jump_sky()
+                    app.processEvents()
+                    assert len(h.sky.nodes)==10
+                    w.grab().save(str(qa/"learning-universe.png"))
+                    assert h.sky.export(str(qa/"universe-export.png"))
                     report=dict(success=True,platform=app.platformName(),
-                                calendar=True,
+                                calendar=True,archive=True,
                                 frozen=getattr(sys,"frozen",False),history_rows=1,tag_distribution=True,
                                 tray_available=w.tray.isSystemTrayAvailable())
                 except Exception:

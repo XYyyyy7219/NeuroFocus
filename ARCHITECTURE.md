@@ -41,6 +41,10 @@ QueryUnbiasedInterruptTime 给出排除 Windows 睡眠、休眠的累计时间�
 
 `calendar_ui.py` 在已有统计页中使用单个 Qt 画布显示可见周列。悬停直接读取范围汇总，点击后分页读取当天的片段。范围、筛选、本地日期或数据库写入发生变化时，刷新范围缓存。三个色阶阈值沿用现有配置文件。数据库结构保持版本 1。[设计说明](docs/design/study-calendar-design.md)
 
+## Windows 学习档案
+
+Controller 将真实阶段边界交给 Store，与同一检查点的有效学习毫秒一起提交；会话开始时保存计时参数快照。history 模块把原始片段投影为本地日期内连续同科目的活动。日志外键指向组首片段，星图使用相同键；同一周期跨午夜仍可从两天查看周期过程。archive_widgets 绘制时间轴、保存草稿，archive_ui 负责筛选与跨页定位。universe 负责原生 Qt 场景的绘制、相机和语义层级。[数据模型](docs/design/learning-data-model.md) · [页面联动](docs/design/learning-history-integration.md)
+
 ## Android 实现
 
 本地 HTML/CSS 提供移动端界面，Java Activity 只向随包资源提供有限的设置、计时与导出命令。Manifest 未声明网络权限。前台服务独立于 Activity，使用 elapsedRealtime 和同样的阶段边界规则。手机锁屏仍应计入学习，活动阶段使用有超时的部分唤醒锁，暂停和结束释放。Android 内存回收或强行停止后恢复已提交记录，下一次手动开启新一轮。厂商对后台服务的具体限制需真机检查。[Android 时钟文档](https://developer.android.com/reference/android/os/SystemClock) · [Android 前台服务](https://developer.android.com/develop/background-work/services/fgs/service-types)

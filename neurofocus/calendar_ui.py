@@ -224,6 +224,8 @@ class StudyCalendar(QScrollArea):
         self.note=label("","muted")
         self.note.setWordWrap(True)
         col.addWidget(self.note)
+        timeline_button=button("打开当日时间轴",handler=lambda:self.w.archive.open_day(self.selected))
+        col.addWidget(timeline_button,0,Qt.AlignLeft)
         self.ring=Ring()
         self.ring.setFixedHeight(145)
         col.addWidget(self.ring)

@@ -64,11 +64,13 @@ class Tags:
     def selected(self):
         return self.db.execute("SELECT tag FROM tag_choice").fetchone()[0]
 
-    def select(self, key):
+    def select(self, key, sid=None, at=None):
         with self.db:
             if not self.db.execute("SELECT 1 FROM tags WHERE id=? AND archived=0",(key,)).fetchone():
                 raise ValueError("请选择使用中的标签")
             self.db.execute("UPDATE tag_choice SET tag=?", (key,))
+            if sid is not None:
+                self.db.execute("INSERT INTO study_events(sid,at,kind,tag) VALUES(?,?,'tag',?)",(sid,at,key))
 
     def archive(self, key, value):
         if not key:

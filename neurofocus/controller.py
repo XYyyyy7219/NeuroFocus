@@ -1,5 +1,5 @@
 from dataclasses import replace
-from .engine import Engine
+from .engine import Engine, Entry
 from . import config
 
 
@@ -19,7 +19,7 @@ class Controller:
         if tag_id == self.tag_id:
             return []
         events = self.update("flush")
-        self.store.tags.select(tag_id)
+        self.store.tags.select(tag_id,self.sid,self.last_wall)
         self.tag_id = tag_id
         self.block += 1
         return events
@@ -33,7 +33,7 @@ class Controller:
         if self.sid is not None:
             return
         now, wall, _ = self.clock.sample()
-        self.sid = self.store.start(wall)
+        self.sid = self.store.start(wall,self.settings,self.tag_id)
         self.engine.start(self.settings, now)
         self.saved = now
 
@@ -48,18 +48,23 @@ class Controller:
 
     def update(self, action=None):
         now, wall, woke = self.clock.sample()
+        self.last_wall=wall
         if self.sid is None:
             return []
         if self.closing_status:
             self._sync(now, wall)
             return []
+        previous = self.engine.last
         if woke and not self.engine.paused:
             # A missed suspend broadcast has an ambiguous wall-time boundary.
             # Retain the last observed instant and wait for explicit resume.
             self.engine.last = now
             self.engine.paused = True
+            self.pending.append(Entry("wake_pause",wall))
         was_paused = self.engine.paused
         entries = self.engine.tick(now, wall)
+        if was_paused and not woke and now>previous:
+            self.pending.append(Entry("paused_ms",wall-(now-previous),now-previous))
         for entry in entries:
             if entry.kind == "resume_focus":
                 self.block += 1
@@ -72,9 +77,14 @@ class Controller:
             self.closing_status = action
         elif action in ("pause", "suspend"):
             self.engine.paused = True
+            if not was_paused: self.pending.append(Entry(action,wall))
         elif action == "resume":
             self.engine.resume(now)
             self.block += 1
+            if was_paused: self.pending.append(Entry("resume",wall))
+        if self.closing_status:
+            stop = entries[-1].at if self.closing_status=="done" and entries else wall
+            self.pending.append(Entry(self.closing_status,stop))
         if woke and was_paused and action != "resume":
             events.append("wake_pause")
         if self.closing_status or events or (action is not None) or (self.pending and now - self.saved >= 5000):

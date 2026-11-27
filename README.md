@@ -8,7 +8,9 @@ Windows 版可在同一轮专注中切换学习标签。打开「学习统计 �
 
 Windows 的「学习统计 → 学习日历」可按标签回顾最近 3、6、12 个月、自然年或自选区间。点击日期查看学习片段、科目比例和关联周期的休息情况。色阶阈值可调整并自动保存。详见[使用说明](使用说明.md)、[调研报告](docs/research/study-calendar-research.md)和[设计决策](docs/design/study-calendar-design.md)。
 
-[下载 Windows 便携版](https://github.com/XYyyyy7219/NeuroFocus/releases/tag/windows-v1.2.0)。解压到可写目录，双击 `NeuroFocus.exe`。升级前正常退出程序，备份原目录的 `data` 文件夹，将新版程序和运行库解压到原目录。
+Windows 1.3 的「学习档案」提供日周时间轴、可补写的本地学习日志与分层星图。点击一次学习，就能回看当时的有效片段、写下次接续的位置，或在星图里找到这段经历。[学习档案使用说明](使用说明.md) · [星图方案对比](docs/design/learning-universe-design.md) · [Physics Atlas 源码分析](docs/research/physics-atlas-analysis.md)
+
+[下载 Windows 便携版](https://github.com/XYyyyy7219/NeuroFocus/releases/tag/windows-v1.3.0)。解压到可写目录，双击 `NeuroFocus.exe`。升级前正常退出程序，备份原目录的 `data` 文件夹，将新版程序和运行库解压到原目录。
 
 Windows 11 x64 版支持托盘、悬浮小窗、置顶、可试听提示音和通知。Android 8.0 及以上版本提供适合触屏的界面和前台计时。两端各自在本地保存设置和学习记录，可按日、周、月查看实际专注时长，并导出 CSV。
 

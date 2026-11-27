@@ -12,6 +12,7 @@ from .widgets import box,label,button,card,stylesheet
 from .pages import Preferences,Statistics,duration
 from .storage import buckets
 from .sound import Chimes
+from .archive_ui import Archive
 
 
 PHASE={"idle":"待机","focus":"专注中","micro":"微休息","long":"长休息"}
@@ -80,7 +81,7 @@ class Window(QMainWindow):
         side_box.addLayout(brand)
         side_box.addSpacing(39)
         self.nav=[]
-        for i,(title,name) in enumerate([("专注计时","timer"),("学习统计","chart"),("偏好设置","settings")]):
+        for i,(title,name) in enumerate([("专注计时","timer"),("学习统计","chart"),("偏好设置","settings"),("学习档案","cycle")]):
             b=button("  "+title,"nav",lambda _,n=i:self.navigate(n))
             b.setIcon(icon(name,"#C4DECA"))
             b.setIconSize(QSize(19,19))
@@ -116,6 +117,8 @@ class Window(QMainWindow):
         self.prefs=Preferences(self)
         self.stack.addWidget(self.stats)
         self.stack.addWidget(self.prefs)
+        self.archive=Archive(self)
+        self.stack.addWidget(self.archive)
         self.mini=Mini(self)
         self.tray=QSystemTrayIcon(icon("logo","#6CA789"),self)
         self.tray.setToolTip("NeuroFocus")
@@ -160,6 +163,8 @@ class Window(QMainWindow):
         self.refresh_tags()
         self.tag_picker.activated.connect(self.pick_tag)
         row.addWidget(self.tag_picker)
+        self.breakpoint=button("学习断点",handler=self.show_breakpoint)
+        row.addWidget(self.breakpoint)
         row.addStretch()
         self.badge=label("","pill")
         row.addWidget(self.badge)
@@ -169,6 +174,9 @@ class Window(QMainWindow):
         self.caption=label("","muted")
         self.caption.setAlignment(Qt.AlignCenter)
         center.addWidget(self.caption)
+        self.journal_link=button("补写本轮日志",handler=self.recent_journal)
+        center.addWidget(self.journal_link,0,Qt.AlignCenter)
+        self.journal_link.hide()
         center.addSpacing(8)
         controls=box(horizontal=True,spacing=8)
         controls.addStretch()
@@ -239,12 +247,35 @@ class Window(QMainWindow):
 
     def navigate(self,index):
         self.stack.setCurrentIndex(index)
-        self.title.setText(("专注计时","学习统计","偏好设置")[index])
+        self.title.setText(("专注计时","学习统计","偏好设置","学习档案")[index])
         for i,b in enumerate(self.nav): b.setChecked(i==index)
         if index==1:
             self.advance("flush")
             self.stats.refresh()
+        elif index==3:
+            self.advance("flush")
+            self.archive.refresh()
         self.render()
+
+    def show_breakpoint(self):
+        row=self.ctrl.store.db.execute("""SELECT day,next_step FROM journal WHERE tag=?
+            AND trim(next_step)<>'' ORDER BY day DESC,sid DESC,block DESC LIMIT 1""",(self.ctrl.tag_id,)).fetchone()
+        text="该标签还没有学习断点。写日志时可把下次的起点留在「下一步」。"
+        if row: text=row[0]+"\n\n"+row[1]
+        msg=QMessageBox(self)
+        msg.setWindowTitle("学习断点")
+        msg.setTextFormat(Qt.PlainText)
+        msg.setText(text)
+        msg.exec()
+
+    def recent_journal(self):
+        self.navigate(3)
+        rows=[a for a in self.archive.items.values() if a.key[0]==self.recent_sid]
+        if rows:
+            a=rows[-1]
+            self.archive.open_day(date.fromisoformat(a.day))
+            self.archive.select(a.key)
+            self.archive.edit()
 
     def theme(self):
         c=DARK if self.ctrl.settings.dark else LIGHT
@@ -289,7 +320,13 @@ class Window(QMainWindow):
             self.last_message="提示音播放失败，请检查系统音频输出"
 
     def advance(self,action=None):
-        self.notify_events(self.ctrl.update(action))
+        sid=self.ctrl.sid
+        events=self.ctrl.update(action)
+        self.notify_events(events)
+        if sid is not None and (self.ctrl.sid is None or "complete" in events):
+            self.recent_sid=sid
+            self.journal_link.setVisible(bool(self.ctrl.store.db.execute(
+                "SELECT 1 FROM focus_spans WHERE sid=? LIMIT 1",(sid,)).fetchone()))
 
     def notify_events(self,events):
         if events:
@@ -320,6 +357,7 @@ class Window(QMainWindow):
         try:
             if e.phase=="idle":
                 self.ctrl.start()
+                self.journal_link.hide()
                 self.last_message=""
             else:
                 self.advance("resume" if e.paused else "pause")
@@ -375,6 +413,7 @@ class Window(QMainWindow):
             self.last_stats=key
             self.today_base=self.ctrl.store.daily(today,today).get(str(today),(0,)*5)
             if self.stack.currentIndex()==1: self.stats.refresh()
+            if self.stack.currentIndex()==3: self.archive.refresh()
         extra=buckets(self.ctrl.pending).get(str(today),(0,)*5)
         actual,_,__,micro,complete=(a+b for a,b in zip(self.today_base,extra))
         self.values[0].setText(duration(actual))
