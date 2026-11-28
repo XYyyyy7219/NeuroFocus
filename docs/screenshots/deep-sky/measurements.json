@@ -1,0 +1,53 @@
+[
+  {
+    "records": 0,
+    "load_ms": 33.5,
+    "grab_ms": 2.79,
+    "working_mb": 155.5
+  },
+  {
+    "records": 1,
+    "load_ms": 39.1,
+    "grab_ms": 3.13,
+    "working_mb": 155.0
+  },
+  {
+    "records": 10,
+    "load_ms": 42.5,
+    "grab_ms": 3.05,
+    "working_mb": 157.8
+  },
+  {
+    "records": 100,
+    "load_ms": 51.8,
+    "grab_ms": 4.84,
+    "working_mb": 156.7
+  },
+  {
+    "records": 1000,
+    "load_ms": 61.6,
+    "grab_ms": 7.64,
+    "working_mb": 160.4
+  },
+  {
+    "records": 10000,
+    "load_ms": 131.8,
+    "grab_ms": 8.71,
+    "working_mb": 172.5,
+    "pan_topic_members": 1666,
+    "idle_cpu_core_pct": 4.79,
+    "idle_gpu_engine_pct": null,
+    "idle_system_busiest_gpu_instance_pct": 10.244,
+    "pan_paints_s": 33.3,
+    "pan_cpu_core_pct": 100.8,
+    "pan_gpu_engine_pct": null,
+    "pan_seconds": 2.403,
+    "timer_ref_ms": 2402,
+    "timer_record_ms": 2399,
+    "working_topic_mb": 196.0,
+    "pan_system_busiest_gpu_instance_pct": 10.16,
+    "valid_gpu_instances": 511,
+    "minimized_cpu_core_pct": 0.0,
+    "minimized_paints": 0
+  }
+]

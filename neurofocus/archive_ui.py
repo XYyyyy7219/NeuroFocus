@@ -214,6 +214,13 @@ class Archive(QWidget):
         self.cutoff.setText(cutoff)
         rows=[a for a in self.sky_rows if a.day<=cutoff]
         self.cut_rows=rows
+        active=self.items.get(self.sky.observing)
+        if active and (active.tag,active.note[0].strip())!=self.sky.scope and active in rows:
+            path=(active.tag,active.note[0].strip(),active.key)
+            self.sky.scope=()
+            self.sky.populate(rows,self.tags,self.slots)
+            self.sky.enter(path)
+            return
         if self.sky.scope and not any((a.tag,a.note[0].strip())[:len(self.sky.scope)]==self.sky.scope for a in rows):
             self.sky.scope=()
         self.sky.populate(rows,self.tags,self.slots)

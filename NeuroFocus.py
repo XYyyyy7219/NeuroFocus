@@ -146,13 +146,22 @@ def run():
                     assert not texture("deep-field.jpg").isNull() and not texture("spiral.png").isNull()
                     assert h.stage.isVisible() and h.stage.detail_key==h.current
                     h.sky.set_low(True)
+                    from neurofocus.stellar import relief
+                    assert not relief().isNull()
+                    a=h.items[h.current]
+                    h.sky.enter((a.tag,a.note[0].strip(),a.key))
+                    app.processEvents()
+                    assert h.sky.observing==a.key and h.stage.panel.isVisible()
+                    assert w.grab().save(str(qa/"stellar-observation.png"))
+                    h.sky.ascend()
+                    assert h.sky.observing is None
                     h.sky.enter(())
                     app.processEvents()
                     assert h.sky.size()==w.centralWidget().size()
                     w.grab().save(str(qa/"learning-universe.png"))
                     assert h.sky.export(str(qa/"universe-export.png"))
                     report=dict(success=True,platform=app.platformName(),
-                                calendar=True,archive=True,immersive_sky=True,
+                                calendar=True,archive=True,immersive_sky=True,deep_sky=True,
                                 frozen=getattr(sys,"frozen",False),history_rows=1,tag_distribution=True,
                                 tray_available=w.tray.isSystemTrayAvailable())
                 except Exception:

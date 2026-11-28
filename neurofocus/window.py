@@ -416,7 +416,7 @@ class Window(QMainWindow):
             self.last_stats=key
             self.today_base=self.ctrl.store.daily(today,today).get(str(today),(0,)*5)
             if self.stack.currentIndex()==1: self.stats.refresh()
-            if self.stack.currentIndex()==3: self.archive.refresh()
+            if self.stack.currentIndex()==3 and self.isVisible() and not self.isMinimized(): self.archive.refresh()
         extra=buckets(self.ctrl.pending).get(str(today),(0,)*5)
         actual,_,__,micro,complete=(a+b for a,b in zip(self.today_base,extra))
         self.values[0].setText(duration(actual))
@@ -425,6 +425,10 @@ class Window(QMainWindow):
         self.tray.setToolTip(f"NeuroFocus · {title} {time}")
         interval=1000 if idle or e.paused else 250 if self.isVisible() or self.mini.isVisible() else 1000
         if self.timer.interval()!=interval: self.timer.setInterval(interval)
+
+    def showEvent(self,event):
+        super().showEvent(event)
+        if hasattr(self,"archive") and self.stack.currentIndex()==3: self.archive.refresh()
 
     def restore(self):
         self.mini.hide()
@@ -442,6 +446,10 @@ class Window(QMainWindow):
     def changeEvent(self,event):
         super().changeEvent(event)
         if event.type()==QEvent.WindowStateChange and self.isMinimized() and hasattr(self,"tray"):
+            if hasattr(self,"archive"):
+                self.archive.ticker.stop()
+                self.archive.play.setText("播放演化")
+                self.archive.sky._camera.stop()
             if self.ctrl.settings.tray and self.tray.isSystemTrayAvailable():
                 QTimer.singleShot(0,lambda:self.hide() if self.isMinimized() else None)
 

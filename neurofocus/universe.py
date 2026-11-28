@@ -1,17 +1,12 @@
 """Semantic levels share a camera; each scene item represents real archive data."""
 from collections import defaultdict
-from math import cos, sin, sqrt, log1p
-from PySide6.QtCore import Qt, QRectF, QPointF, Signal, QVariantAnimation, QEasingCurve
-from PySide6.QtGui import QColor,QPen,QPainter,QImage,QPixmap,QPainterPath,QTransform
+from math import log1p
+from PySide6.QtCore import Qt, QRect, QRectF, QPointF, Signal, QVariantAnimation, QEasingCurve
+from PySide6.QtGui import QColor,QPen,QPainter,QImage,QPixmap,QPainterPath,QTransform,QFontMetricsF
 from PySide6.QtWidgets import QGraphicsItem, QGraphicsView, QGraphicsScene
+from .stellar import CHILD_SCALE,cluster_position,draw_star,galaxy_position,label_rect,level,member_position
 from .distribution import short_time
-from .starlight import background, draw_group, arm_point, sky_font, star
-
-
-def orbit(slot):
-    angle = slot*2.399963229728653
-    radius = 90*sqrt(slot)
-    return QPointF(radius*cos(angle)*1.25,radius*sin(angle)*0.78)
+from .starlight import background, sky_font
 
 
 def tint(color, alpha):
@@ -30,57 +25,60 @@ class Body(QGraphicsItem):
         self.setAcceptHoverEvents(True)
         self.setCursor(Qt.PointingHandCursor)
         self.points=()
+        self.anchor=QPointF()
         self.count=0
         self.tilt=-23
         self.squash=.50
-        self.setCacheMode(QGraphicsItem.DeviceCoordinateCache if group else QGraphicsItem.NoCache)
+        self.extent=18.
+        self.observing=False
+        self.seed=key[0] if group else key[2][0]
+        self.setCacheMode(QGraphicsItem.NoCache)
 
     def boundingRect(self):
-        if self.group:
-            return QRectF(-150,-100,300,217)
-        return QRectF(-85,-40,170,87)
+        e=self.extent if self.group else max(35.,self.radius*4.1)
+        return QRectF(-e,-e,2*e,2*e)
 
     def shape(self):
         path=QPainterPath()
         if self.group:
-            path.addEllipse(QRectF(-132,-66,264,139))
-            path.addRect(QRectF(-72,62,144,45))
+            for pt,r in self.points:
+                path.addEllipse(pt,max(7.,r),max(7.,r))
+            if self.count>10: path.addEllipse(QPointF(),self.extent*.77,self.extent*.52)
         else:
-            path.addEllipse(QPointF(),max(9,self.radius*.64),max(9,self.radius*.64))
+            path.addEllipse(QPointF(),max(9.,self.radius),max(9.,self.radius))
         return path
 
     def paint(self,p,option,widget):
-        from PySide6.QtWidgets import QStyle
         p.setRenderHint(QPainter.SmoothPixmapTransform)
-        hovered=bool(option.state & QStyle.State_MouseOver)
+        scale=option.levelOfDetailFromTransform(p.worldTransform())
         color=self.color
-        if color.lightness()<146: color=color.lighter(min(260,round(15000/max(40,color.lightness()))))
-        tint_name=color.name()
+        if color.lightness()<142: color=color.lighter(min(250,round(14800/max(42,color.lightness()))))
         if self.group:
-            draw_group(p,self.points,tint_name,133,self.tilt,self.squash,
-                       min(.97,.35+.14*log1p(self.count)))
-            p.setFont(sky_font(15,True))
-            p.setPen(QColor("#f4f0e9" if hovered else "#d6e1eb"))
-            p.drawText(QRectF(-118,65,236,24),Qt.AlignCenter,p.fontMetrics().elidedText(self.title,Qt.ElideRight,226))
-            p.setFont(sky_font(10))
-            p.setPen(QColor("#b1c2d7"))
-            p.drawText(QRectF(-100,91,200,17),Qt.AlignCenter,f"{self.count} 次活动")
-            if hovered:
-                p.setPen(QPen(color,1))
-                p.drawLine(QPointF(-12,62),QPointF(12,62))
+            if self.count>=11:
+                # Diffuse envelope only. All luminous samples below have record IDs.
+                from .starlight import texture
+                pix=texture("spiral.png")
+                e=self.extent*.94
+                p.save()
+                p.rotate(self.tilt)
+                p.setOpacity(min(.54,.15+.06*log1p(self.count)))
+                p.drawPixmap(QRectF(-e,-e*self.squash,2*e,2*e*self.squash),pix,QRectF(pix.rect()))
+                p.restore()
+            for pos,r in self.points:
+                p.save()
+                p.translate(pos)
+                draw_star(p,r,color,level(scale*r),self.seed)
+                p.restore()
             return
-        r=self.radius
-        star(p,0,0,r*1.9,tint_name)
-        p.setBrush(Qt.NoBrush)
-        if self.ring:
-            p.setPen(QPen(tint(color,205),1.1))
-            p.drawArc(QRectF(-9,-9,18,18),25*16,94*16)
-        if self.active or hovered:
-            p.setPen(QPen(QColor("#f0e2c8"),1))
-            rect=QRectF(-16,-16,32,32)
-            for i in range(4): p.drawArc(rect,(i*90+26)*16,38*16)
-            p.setFont(sky_font(12))
-            p.drawText(QRectF(-80,21,160,21),Qt.AlignCenter,self.title)
+        if widget is not None:
+            view=widget.parentWidget()
+            if getattr(view,"observing",None) and not self.observing: p.setOpacity(.24)
+        draw_star(p,self.radius,color,level(scale*self.radius,self.observing),self.seed)
+        if self.ring and scale*self.radius>=4 and not self.observing:
+            p.setBrush(Qt.NoBrush)
+            p.setPen(QPen(tint(color,196),1.15/max(.1,scale)))
+            r=self.radius+3.5/scale
+            p.drawArc(QRectF(-r,-r,2*r,2*r),29*16,83*16)
 
 
 class Sky(QGraphicsView):
@@ -98,6 +96,12 @@ class Sky(QGraphicsView):
         self.setMinimumHeight(220)
         self.setAccessibleName("学习星图")
         self.scope=()
+        self.observing=None
+        self._poses={}
+        self.labels=[]
+        self.show_labels=True
+        self.obstacles=lambda:[]
+        self.setAlignment(Qt.AlignCenter)
         self.nodes={}
         self.edges={}
         self.empty=None
@@ -144,6 +148,80 @@ class Sky(QGraphicsView):
         ratio=pix.devicePixelRatio()
         p.drawPixmap(area,pix,QRectF(dx*ratio,dy*ratio,width*ratio,height*ratio))
 
+    def drawForeground(self,p,rect):
+        self.labels=[]
+        if not self.show_labels or not self.nodes: return
+        viewport=self.viewport().rect()
+        visible=QRectF(viewport).adjusted(7,7,-7,-7)
+        mapping=self.viewportTransform()
+        inverse,ok=mapping.inverted()
+        if not ok: return
+        # Retain the output-to-viewport transform (including a 2x image export).
+        p.save()
+        p.setWorldTransform(inverse*p.worldTransform())
+        font=sky_font(12)
+        p.setFont(font)
+        fm=QFontMetricsF(font)
+        blocked=list(self.obstacles())
+        region=viewport
+        if len(self.scope)==2 and len(self.nodes)>=40:
+            # At this density only the hovered leaf is annotated. Query nearby items
+            # for obstruction tests instead of projecting the entire visible cluster.
+            if self.observing or not self.viewport().underMouse():
+                p.restore()
+                return
+            mouse=self.viewport().mapFromGlobal(self.cursor().pos())
+            region=viewport.intersected(QRect(mouse.x()-180,mouse.y()-55,360,110))
+        items=[item for item in self.items(region,Qt.IntersectsItemBoundingRect) if isinstance(item,Body)]
+        candidates=[]
+        for item in items:
+            anchor=mapping.map(item.mapToScene(item.anchor))
+            hover=item.isUnderMouse()
+            if item.observing: continue
+            if visible.contains(anchor):
+                core=max(3,item.radius*mapping.m11()) if not item.group else 4
+                blocked.append(QRectF(anchor.x()-core,anchor.y()-core,2*core,2*core))
+                if item.active or hover or item.group or (not self.observing and core>=4 and len(self.nodes)<12):
+                    candidates.append((item.active,hover,item.count,item,anchor))
+        for active,hover,count,item,anchor in sorted(candidates,key=lambda c:c[:3],reverse=True):
+            title=item.title
+            if item.group and (hover or len(items)<=6): title+=f"  ·  {count}"
+            text=fm.elidedText(title,Qt.ElideRight,146)
+            w=fm.horizontalAdvance(text)+10
+            offset=18 if item.group else max(14,item.radius*mapping.m11()+6)
+            place=label_rect(anchor,(w,20),visible,blocked,offset)
+            if place is None: continue
+            blocked.append(place.adjusted(-3,-2,3,2))
+            self.labels.append((item.key,place,anchor))
+            end=QPointF(place.left() if place.center().x()>anchor.x() else place.right(),place.center().y())
+            p.setPen(QPen(QColor("#9aa9b7"),.7))
+            direction=end-anchor
+            length=max(1.,(direction.x()**2+direction.y()**2)**.5)
+            start=anchor+direction*(min(length-1,4 if item.group else max(3,item.radius*mapping.m11()))/length)
+            p.drawLine(start,end)
+            p.setPen(Qt.NoPen)
+            p.setBrush(QColor(9,17,29,172))
+            p.drawRoundedRect(place,4,4)
+            p.setPen(QColor("#ffe9bc" if active or hover else "#dfe7ee"))
+            p.drawText(place,Qt.AlignCenter,text)
+            if len(self.labels)>=30: break
+        p.restore()
+
+    def hideEvent(self,event):
+        self._camera.stop()
+        super().hideEvent(event)
+
+    def current_pose(self):
+        return self.mapToScene(self.viewport().rect().center()),self.transform().m11()
+
+    def origin(self,path):
+        if not path: return QPointF()
+        if len(path)==1: return galaxy_position(self.slots[path])
+        return cluster_position(self.slots[path],path[0])
+
+    def ascend(self):
+        self.enter(self.scope if self.observing else self.scope[:-1],restore=True)
+
     def set_low(self,value):
         self.low=value
         if value: self._camera.stop()
@@ -171,15 +249,20 @@ class Sky(QGraphicsView):
             return
         bounds=self.scene().itemsBoundingRect()
         w,h=self.viewport().width(),self.viewport().height()
-        scale=min(1.65,max(.035,min((w-35)/max(1,bounds.width()),(h-100)/max(1,bounds.height()))))
+        scale=min(1.65,max(.035,min((w-60)/max(1,bounds.width()),max(120,h-190)/max(1,bounds.height()))))
         self.focus_camera(bounds.center(),scale,animate)
 
     def resizeEvent(self,e):
         super().resizeEvent(e)
-        if hasattr(self,"nodes") and self.nodes and not self.scope: self.frame_scene()
+        if hasattr(self,"nodes") and self.nodes:
+            if self.observing: self.observe_camera(False)
+            elif not self.scope: self.frame_scene()
 
     def populate(self,rows,tags,slots,recenter=False):
         self.rows,self.tags,self.slots=rows,tags,slots
+        if self.observing and not any(a.key==self.observing and (a.tag,a.note[0].strip())==self.scope for a in rows):
+            self.observing=None
+            recenter=True
         self.rebuild(recenter or self._fit_pending)
         self._fit_pending=not bool(rows)
 
@@ -226,16 +309,28 @@ class Sky(QGraphicsView):
                     # Vary the offset inside each bin to avoid aliasing a spiral arm.
                     point_rows=[items[int((j+(.31+j*.61803398875)%1)*len(items)/160)]
                                 for j in range(160)]
-                coords=tuple((arm_point(self.slots[("tag-member",v.key)],tag.id),
-                              (5.5+min(6,log1p(v.ms/60000)*1.4)) if self.weighted else 8) for v in point_rows)
+                coords=[]
+                for v in point_rows:
+                    topic=(v.tag,v.note[0].strip())
+                    slot=self.slots[topic]
+                    local=member_position(self.slots[topic+(v.key,)],v.tag,slot)*CHILD_SCALE
+                    if level==1: local=(cluster_position(slot,v.tag)+local)*CHILD_SCALE
+                    radius=(1.4+min(2.6,log1p(v.ms/60000)*.65)) if self.weighted else 3.4
+                    if len(items)==1: radius=6.8
+                    coords.append((local,radius))
+                node.prepareGeometryChange()
                 node.points=coords
+                node.anchor=sum((pt for pt,_ in coords),QPointF())/len(coords)
                 node.count=len(items)
-                node.tilt=(-28,15,-9,32)[self.slots[path]%4]
-                node.squash=(.52,.66,.43,.56)[self.slots[path]%4]
+                node.extent=max(18,max(max(abs(pt.x()),abs(pt.y()))+r*4 for pt,r in coords))
+                node.tilt=(-28,16,-10,34)[tag.id%4]
+                node.squash=(.50,.68,.44,.62)[tag.id%4]
             node.active=level==3 and a.key==self.selected
+            node.observing=level==3 and a.key==self.observing
             node.update()
-            node.setPos(orbit(self.slots[path])*(2.8 if level<3 else .84))
-            if level==3 and path[1] and prev is not None and self.selected in (prev[2],path[2]):
+            if level<=2: node.setPos(self.origin(path))
+            else: node.setPos(member_position(self.slots[path],a.tag,self.slots[path[:2]]))
+            if level==3 and not self.observing and path[1] and prev is not None and self.selected in (prev[2],path[2]):
                 edge=(prev,path)
                 edges.add(edge)
                 other=self.nodes[prev]
@@ -257,15 +352,51 @@ class Sky(QGraphicsView):
         else: self.centerOn(center)
         self.changed.emit()
 
-    def enter(self,path):
+    def enter(self,path,restore=False):
+        path=tuple(path)
         self._camera.stop()
-        self.scope=path[:2]
-        if len(path)==3: self.selected=path[2]
+        old=self.scope
+        point,zoom=self.current_pose()
+        if not self.observing:
+            self._poses[old]=(point,zoom)
+        new=path[:2]
+        # Change local charts through the common ancestor, conserving projected space.
+        common=0
+        for x,y in zip(old,new):
+            if x!=y: break
+            common+=1
+        for i in range(len(old),common,-1):
+            prefix=old[:i]
+            if prefix not in self.slots: break
+            point=self.origin(prefix)+point*CHILD_SCALE
+            zoom/=CHILD_SCALE
+        for i in range(common+1,len(new)+1):
+            point=(point-self.origin(new[:i]))/CHILD_SCALE
+            zoom*=CHILD_SCALE
+        self.scope=new
+        self.observing=path[2] if len(path)==3 else None
+        self.selected=self.observing
         self.rebuild(False)
-        if len(path)<3: self.frame_scene(True)
-        if len(path)==3 and path in self.nodes:
-            self.focus_camera(self.nodes[path].pos(),1.25,True)
+        self.focus_camera(point,max(.006,min(36,zoom)),False)
+        if self.observing is not None and path in self.nodes:
+            if new not in self._poses:
+                self.frame_scene()
+                self._poses[new]=self.current_pose()
+            self.observe_camera(True)
             self.picked.emit(path[2])
+        elif restore and new in self._poses:
+            self.focus_camera(*self._poses[new],True)
+        else: self.frame_scene(True)
+
+    def observe_camera(self,animate):
+        path=self.scope+(self.observing,)
+        node=self.nodes.get(path)
+        if not node: return
+        w,h=self.viewport().width(),self.viewport().height()
+        r=max(65,min(h*.218,(w-min(350,w*.36))*.30))
+        scale=r/node.radius
+        center=node.pos()+QPointF(w*.18/scale,0)
+        self.focus_camera(center,scale,animate)
 
     def mousePressEvent(self,e):
         self._camera.stop()
@@ -278,11 +409,7 @@ class Sky(QGraphicsView):
         super().mouseReleaseEvent(e)
         self._press=None
         if click and isinstance(hit,Body) and e.button()==Qt.LeftButton:
-            if len(hit.key)<3: self.enter(hit.key)
-            else:
-                self.selected=hit.key[2]
-                self.rebuild(False)
-                self.picked.emit(self.selected)
+            self.enter(hit.key)
 
     def wheelEvent(self,e):
         self._camera.stop()
@@ -292,8 +419,8 @@ class Sky(QGraphicsView):
         hit=self.itemAt(e.position().toPoint())
         if zoom>1.85 and isinstance(hit,Body) and len(hit.key)<3:
             self.enter(hit.key)
-        elif zoom<.6 and self.scope: self.enter(self.scope[:-1])
-        elif .035<=zoom<=5:
+        elif zoom<.6 and self.scope: self.ascend()
+        elif .025<=zoom<=32:
             center=self.mapToScene(self.viewport().rect().center())
             self.focus_camera(anchor+(center-anchor)/factor,zoom,True)
         e.accept()

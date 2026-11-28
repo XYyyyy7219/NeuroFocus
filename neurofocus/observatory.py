@@ -1,10 +1,13 @@
 """Immersive window overlay; the archive owns all data and filtering state."""
-from PySide6.QtCore import Qt,QEvent,QTimer,QSignalBlocker
+from html import escape
+import json
+from PySide6.QtCore import Qt,QEvent,QTimer,QSignalBlocker,QRectF
 from PySide6.QtGui import QShortcut,QKeySequence
 from PySide6.QtWidgets import (QWidget,QFrame,QLineEdit,QMenu,QDialog,QComboBox,QCheckBox,
-    QDialogButtonBox,QListView)
+    QDialogButtonBox,QListView,QTextBrowser)
 from .widgets import box,label,button
 from .distribution import short_time
+from .history import wall_time
 
 STYLE="""
 QWidget#observatory {background:#080f1d;}
@@ -33,6 +36,7 @@ class Observatory(QWidget):
         self.hide()
         self.full_before=None
         self.detail_key=None
+        self.clean=False
         self.sky=h.sky
         self.sky.setParent(self)
         self.sky.set_low(h.w.ctrl.settings.sky_low_motion)
@@ -53,6 +57,7 @@ class Observatory(QWidget):
         more.setAccessibleName("星图显示选项")
         self.menu=QMenu(more)
         self.menu.addAction("全屏探索  F11",self.fullscreen)
+        self.menu.addAction("纯净观测  F9",self.toggle_clean)
         self.menu.addAction("保存当前视野 PNG",h.export_sky)
         for name,initial,fn in (("按时长调整恒星大小",True,h.set_sizes),
                                 ("低负载 · 关闭镜头动画",self.sky.low,self.low_motion)):
@@ -74,7 +79,7 @@ class Observatory(QWidget):
         self.nav=QWidget(self)
         row=box(self.nav,horizontal=True)
         row.addWidget(button("全景",handler=lambda:self.sky.enter(())))
-        self.up=button("上一级",handler=lambda:self.sky.enter(self.sky.scope[:-1]))
+        self.up=button("上一级",handler=self.sky.ascend)
         row.addWidget(self.up)
         self.time=QFrame(self)
         self.time.setObjectName("skyTime")
@@ -97,9 +102,10 @@ class Observatory(QWidget):
         self.matches.setModel(h.model)
         self.matches.setUniformItemSizes(True)
         col.addWidget(self.matches)
-        self.note=label("")
-        self.note.setTextFormat(Qt.PlainText)
-        self.note.setWordWrap(True)
+        self.note=QTextBrowser()
+        self.note.setOpenLinks(False)
+        self.note.setStyleSheet("QTextBrowser {color:#e1e7ed; background:transparent;border:0;font-size:13px;}")
+        self.sky.obstacles=self.obstacles
         col.addWidget(self.note)
         row=box(horizontal=True,spacing=4)
         self.links=QWidget()
@@ -117,7 +123,7 @@ class Observatory(QWidget):
         self.search_timer.timeout.connect(self.apply_search)
         self.search.textEdited.connect(lambda _:self.search_timer.start())
         self.search.returnPressed.connect(lambda:self.apply_search(True))
-        for seq,fn in (("Esc",self.escape),("F11",self.fullscreen),("Ctrl+F",self.search.setFocus)):
+        for seq,fn in (("F9",self.toggle_clean),("Esc",self.escape),("F11",self.fullscreen),("Ctrl+F",self.search.setFocus)):
             key=QShortcut(QKeySequence(seq),self)
             key.setContext(Qt.WidgetWithChildrenShortcut)
             key.activated.connect(fn)
@@ -132,13 +138,32 @@ class Observatory(QWidget):
         w,h=self.width(),self.height()
         self.sky.setGeometry(self.rect())
         self.top.setGeometry(22,16,w-44,40)
-        self.heading.setGeometry(27,68,w-60,61)
+        self.heading.setGeometry(27,67,min(390,w-215),64)
         self.nav.setGeometry(max(25,w-170),68,145,34)
         self.legend.setGeometry(26,h-38,275,23)
         width=min(500,max(255,w-340))
         self.time.setGeometry(w-width-22,h-60,width,44)
-        panelw=min(345,w-50)
-        self.panel.setGeometry(w-panelw-22,max(135,h-302),panelw,min(220,h-212))
+        self.position_panel()
+
+    def position_panel(self):
+        w,h=self.width(),self.height()
+        wide=min(340,round(w*.36))
+        height=min(440,h-215) if self.sky.observing else min(225,h-200)
+        self.panel.setGeometry(w-wide-22,max(133,(h-height)//2),wide,max(136,height))
+
+    def obstacles(self):
+        if self.clean: return []
+        return [QRectF(w.geometry()).adjusted(-4,-3,4,3)
+                for w in (self.top,self.nav,self.heading,self.time,self.legend,self.panel) if w.isVisible()]
+
+    def toggle_clean(self):
+        if not self.clean: self.restore_panel=self.panel.isVisible()
+        self.clean=not self.clean
+        self.sky.show_labels=not self.clean
+        for w in (self.top,self.heading,self.time,self.legend): w.setVisible(not self.clean)
+        self.nav.setVisible(not self.clean and bool(self.sky.scope))
+        self.panel.setVisible(not self.clean and self.restore_panel and (self.sky.observing is not None or not self.matches.isHidden()))
+        self.sky.viewport().update()
 
     def open_view(self):
         if self.isHidden():
@@ -150,6 +175,7 @@ class Observatory(QWidget):
         self.filter_btn.setText("已筛选" if self.h.tag.currentData() is not None or self.h.range_on.isChecked() else "筛选")
 
     def close_view(self):
+        if self.clean: self.toggle_clean()
         self.search_timer.stop()
         self.panel.hide()
         self.detail_key=None
@@ -160,9 +186,11 @@ class Observatory(QWidget):
         self.h.tabs.setCurrentIndex(0)
 
     def escape(self):
-        if self.panel.isVisible(): self.panel.hide()
+        if self.clean: self.toggle_clean()
+        elif self.sky.observing: self.sky.ascend()
+        elif self.panel.isVisible(): self.panel.hide()
         elif self.full_before is not None: self.fullscreen()
-        elif self.sky.scope: self.sky.enter(self.sky.scope[:-1])
+        elif self.sky.scope: self.sky.ascend()
         else: self.leave()
 
     def fullscreen(self):
@@ -207,12 +235,14 @@ class Observatory(QWidget):
                                     (h.first,"setDate",first.date()),(h.last,"setDate",last.date())):
                 with QSignalBlocker(dest): getattr(dest,setter)(val)
             self.sky.scope=()
+            self.sky.observing=None
             h.filter_rows()
             self.sky.frame_scene(True)
 
     def apply_search(self,first=False):
         self.search_timer.stop()
         self.sky.scope=()
+        self.sky.observing=None
         with QSignalBlocker(self.h.query): self.h.query.setText(self.search.text())
         self.h.filter_rows()
         if self.search.text().strip() and self.h.model.rowCount():
@@ -243,13 +273,31 @@ class Observatory(QWidget):
         self.h.select(key)
         a=self.h.items.get(key)
         if a is None: return
-        self.panel_title.setText("学习活动")
+        self.position_panel()
+        self.panel_title.setText("恒星观测   /   学习活动")
         self.matches.hide()
-        self.note.setText(f"{a.note[0] or self.h.tags[a.tag].name}\n{a.day}   ·   {short_time(a.ms)}"
-                         +("\n"+a.note[1][:82] if a.note[1] else ""))
+        sid=a.key[0]
+        row=self.h.db.execute("SELECT config FROM session_protocol WHERE sid=?",(sid,)).fetchone()
+        micro=self.h.db.execute("SELECT sum(micro_count),sum(micro) FROM days WHERE sid=?",(sid,)).fetchone()
+        protocol="旧版未记录"
+        if row:
+            cfg=json.loads(row[0])
+            protocol=f"{cfg['focus']} 分钟 · "+("随机微休息" if cfg['micro_on'] else "连续专注")
+        def safe(value): return escape(str(value)).replace("\n","<br>")
+        tag=self.h.tags[a.tag].name
+        parts=[f"<h3>{safe(a.note[0] or tag)}</h3>",
+               f"<p>{safe(tag)}　·　{a.day}<br>{wall_time(a.started)} — {wall_time(a.ended)}</p>",
+               f"<p>实际学习　<b>{short_time(a.ms)}</b><br>周期策略　{protocol}<br>周期微休息　{micro[0] or 0} 次 · {short_time(micro[1] or 0)}</p>"]
+        for name,value in zip(("学习收获","疑问与思考","下一步","学习体验"),a.note[1:]):
+            if value: parts.append(f"<p><b>{name}</b><br>{safe(value)}</p>")
+        if not any(a.note): parts.append("<p>可在「日志」中为这次学习补记一句话。</p>")
+        html="".join(parts)
+        if html!=getattr(self,"_html",None):
+            self._html=html
+            self.note.setHtml(html)
         self.note.show()
         self.links.show()
-        self.panel.show()
+        self.panel.setVisible(not self.clean)
 
     def sync(self,rows):
         h=self.h
@@ -258,10 +306,17 @@ class Observatory(QWidget):
         suffix=f"{len(rows)} 次活动   ·   {short_time(sum(a.ms for a in rows))}"
         if not scope: suffix=f"{len(self.sky.nodes)} 个学科星系   /   "+suffix
         elif len(scope)==2: suffix=h.tags[scope[0]].name+"   /   "+suffix
+        if self.sky.observing:
+            self.title.setText("恒星观测")
+            suffix="宇宙  ›  "+h.tags[scope[0]].name+"  ›  "+(scope[1] or "未填写主题")
         self.sub.setText(suffix)
-        self.nav.setVisible(bool(scope))
+        self.up.setText("返回星团" if self.sky.observing else "上一级")
+        self.nav.setVisible(bool(scope) and not self.clean)
+        if self.detail_key and self.detail_key!=self.sky.observing:
+            self.detail_key=None
+            self.panel.hide()
         dense=any(node.count>160 for node in self.sky.nodes.values())
-        self.legend.setText("高密度星系 · 每组显示 160 个样本" if dense else
+        self.legend.setText("高密度星系 · 每组最多显示 160 条活动" if dense else
                             "亮点 · 学习活动     弧光 · 已写日志" if len(scope)==2 else
                             "亮点 · 学习活动     云气 · 背景尘埃")
         h.play.setEnabled(h.slide.maximum()>0)

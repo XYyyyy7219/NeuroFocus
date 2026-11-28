@@ -107,3 +107,80 @@ class ObservatoryTests(unittest.TestCase):
         self.assertTrue(self.sky.export(str(out)))
         from PySide6.QtGui import QImage
         self.assertEqual(QImage(str(out)).size(),self.sky.viewport().size()*2)
+
+    def test_surface_lod_and_palette_cache(self):
+        from neurofocus.stellar import level,relief,surface
+        self.assertEqual([level(r) for r in (0,3.99,4,23.99,24)], [0,0,1,1,2])
+        self.assertEqual(level(2,observing=True),3)
+        index=relief()
+        values={index.pixelIndex(x,y) for x in range(190,450,5) for y in range(190,450,5)}
+        self.assertGreater(len(values),40)
+        blue=surface("#75c1db").toImage()
+        amber=surface("#dfac69").toImage()
+        self.assertNotEqual(blue.pixelColor(321,335),amber.pixelColor(321,335))
+        self.assertEqual(amber.pixelColor(0,0).alpha(),0)
+        self.assertEqual(surface.cache_info().maxsize,12)
+
+    def test_group_preview_matches_real_child_positions(self):
+        from neurofocus.stellar import CHILD_SCALE
+        self.add(8)
+        self.sky.set_low(True)
+        overview=[pt for pt,r in self.sky.nodes[(0,)].points]
+        self.sky.enter((0,))
+        topic=self.sky.nodes[(0,"")]
+        self.assertEqual(overview,[(topic.pos()+pt)*CHILD_SCALE for pt,r in topic.points])
+        positions=[pt for pt,r in topic.points]
+        self.sky.enter((0,""))
+        self.assertEqual(positions,[node.pos()*CHILD_SCALE for node in self.sky.nodes.values()])
+        self.sky.populate([self.sky.rows[-1]],self.sky.tags,self.sky.slots)
+        self.sky.enter(())
+        group=self.sky.nodes[(0,)]
+        self.assertEqual(group.count,1)
+        self.assertEqual(group.anchor,overview[-1])
+
+    def test_observation_restores_camera_and_follows_edited_topic(self):
+        self.add(4)
+        self.sky.set_low(True)
+        self.sky.enter((0,""))
+        self.sky.focus_camera(QPointF(22,31),1.3,False)
+        center,scale=self.sky.current_pose()
+        path=next(iter(self.sky.nodes))
+        self.sky.enter(path)
+        self.assertTrue(self.stage.panel.isVisible())
+        self.assertEqual(self.sky.observing,path[-1])
+        self.assertGreater(self.sky.transform().m11(),scale)
+        self.sky.ascend()
+        actual,zoom=self.sky.current_pose()
+        self.assertAlmostEqual(zoom,scale)
+        self.assertLess((actual-center).manhattanLength(),3)
+        self.sky.enter(path)
+        save_note(self.store.db,path[-1],("新章节","<test>","","",""))
+        self.h.refresh()
+        self.assertEqual(self.sky.scope,(0,"新章节"))
+        self.assertEqual(self.sky.observing,path[-1])
+        self.assertIn("<test>",self.stage.note.toPlainText())
+        self.stage.search.setText("没有这条记录")
+        self.stage.apply_search()
+        self.assertIsNone(self.sky.observing)
+        self.assertFalse(self.stage.panel.isVisible())
+
+    def test_screen_labels_and_clean_mode(self):
+        from neurofocus.stellar import label_rect
+        from PySide6.QtCore import QRectF
+        self.add(5)
+        self.sky.set_low(True)
+        for scale in (.65,2.4):
+            self.sky.focus_camera(QPointF(),scale,False)
+            self.sky.viewport().grab()
+            self.assertTrue(self.sky.labels)
+            _,rect,anchor=self.sky.labels[0]
+            self.assertEqual(rect.height(),20)
+            self.assertLess((rect.center()-anchor).manhattanLength(),120)
+            self.assertFalse(any(rect.intersects(other) for other in self.stage.obstacles()))
+        self.assertIsNone(label_rect(QPointF(30,30),(32,20),QRectF(0,0,60,60),[QRectF(0,0,60,60)],5))
+        self.stage.toggle_clean()
+        self.sky.viewport().grab()
+        self.assertEqual(self.sky.labels,[])
+        self.assertFalse(self.stage.top.isVisible())
+        self.stage.escape()
+        self.assertTrue(self.stage.top.isVisible())
