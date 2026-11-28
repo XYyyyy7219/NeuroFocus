@@ -4,6 +4,10 @@ __pycache__/
 /build/
 /dist/
 /data/
+*.nfquotes.json
+literature.local.json
+.archivetemp*
+*九州缥缈录*.txt
 /android/build/
 *.sqlite3*
 *.db

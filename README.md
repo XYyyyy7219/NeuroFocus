@@ -14,7 +14,9 @@ Windows 1.4 的学习星图以全窗画布展示按学科聚集的活动。可�
 
 Windows 2.1 的「学习星图」可以从学科星系进入主题，再点一颗恒星回看具体学习活动。靠近时能看见光球纹理，右侧同时呈现学习时长、周期策略与日志。按 Esc 可回到此前的星团视野，F9 可收起界面。[观测实机图](docs/screenshots/deep-sky/observation.png) · [一万条活动总览](docs/screenshots/deep-sky/overview-10000.png) · [设计说明](docs/design/deep-sky-2.1.md) · [性能实测](docs/deep-sky-performance.md)
 
-[下载 Windows 2.1 便携版](https://github.com/XYyyyy7219/NeuroFocus/releases/tag/windows-v2.1.0)。解压到可写目录，双击 `NeuroFocus.exe`。升级前正常退出程序，备份原目录的 `data` 文件夹，将新版程序和运行库解压到原目录。
+Windows 2.2 在专注页与学习星图中加入文学文案。内置《九州缥缈录Ⅰ：蛮荒》的 28 条人工索引和 8 则署名 NeuroFocus 的原创示例。在「偏好设置 → 文学文案 → 管理文案库」可以选取本地摘录、收藏或导入更多作品。[首页实机图](docs/screenshots/literature/home-light.png) · [星图实机图](docs/screenshots/literature/sky.png) · [后续卷导入格式](docs/literature.md)
+
+[下载 Windows 2.2 便携版](https://github.com/XYyyyy7219/NeuroFocus/releases/tag/windows-v2.2.0)。解压到可写目录，双击 `NeuroFocus.exe`。升级前正常退出程序，备份原目录的 `data` 文件夹，将新版程序和运行库解压到原目录。
 
 Windows 11 x64 版支持托盘、悬浮小窗、置顶、可试听提示音和通知。Android 8.0 及以上版本提供适合触屏的界面和前台计时。两端各自在本地保存设置和学习记录，可按日、周、月查看实际专注时长，并导出 CSV。
 

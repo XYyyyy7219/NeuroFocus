@@ -6,12 +6,16 @@ from PySide6.QtGui import QShortcut,QKeySequence
 from PySide6.QtWidgets import (QWidget,QFrame,QLineEdit,QMenu,QDialog,QComboBox,QCheckBox,
     QDialogButtonBox,QListView,QTextBrowser)
 from .widgets import box,label,button
+from .reading_ui import Passage
 from .distribution import short_time
 from .history import wall_time
 
 STYLE="""
 QWidget#observatory {background:#080f1d;}
 QWidget#observatory QLabel {background:transparent;color:#d9e5f2;}
+QWidget#observatory QLabel#readingBody {font-size:15px;color:#e9ddc9;}
+QWidget#observatory QLabel#readingCredit {font-size:10px;color:#afbacb;}
+QWidget#observatory QToolButton#readingMenu {color:#b9cadb;background:transparent;}
 QWidget#observatory QLabel[role="head"] {font-size:24px;font-weight:600;color:#f5eee4;}
 QWidget#observatory QLabel[role="muted"] {color:#b9cadb;font-size:12px;}
 QWidget#observatory QPushButton,QWidget#observatory QLineEdit {
@@ -43,7 +47,9 @@ class Observatory(QWidget):
         self.top=QWidget(self)
         top=box(self.top,horizontal=True,spacing=6)
         top.addWidget(button("‹  学习档案",handler=self.leave))
-        top.addStretch()
+        self.passage=Passage(h.w,sky=True)
+        top.addWidget(self.passage,1)
+        top.addStretch(0)
         self.search=QLineEdit()
         self.search.setClearButtonEnabled(True)
         self.search.setMaximumWidth(205)
@@ -137,7 +143,7 @@ class Observatory(QWidget):
         super().resizeEvent(e)
         w,h=self.width(),self.height()
         self.sky.setGeometry(self.rect())
-        self.top.setGeometry(22,16,w-44,40)
+        self.top.setGeometry(22,16,w-44,43)
         self.heading.setGeometry(27,67,min(390,w-215),64)
         self.nav.setGeometry(max(25,w-170),68,145,34)
         self.legend.setGeometry(26,h-38,275,23)
@@ -171,6 +177,7 @@ class Observatory(QWidget):
             self.show()
             self.raise_()
             self.sky.setFocus()
+            self.h.w.reading_refresh(force=True)
         if not self.search_timer.isActive(): self.search.setText(self.h.query.text())
         self.filter_btn.setText("已筛选" if self.h.tag.currentData() is not None or self.h.range_on.isChecked() else "筛选")
 

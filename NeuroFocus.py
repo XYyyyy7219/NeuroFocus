@@ -50,6 +50,10 @@ def run():
                 try:
                     app.processEvents()
                     assert w.isVisible()
+                    assert w.home_passage.isVisible() and w.home_passage.entry.text
+                    assert w.home_passage.entry.source.author=="NeuroFocus"
+                    assert sum(e.reviewed and e.text is None for e in w.library.entries.values())==28
+                    assert w.grab().save(str(qa/"reading-home-light.png"))
                     w.grab().save(str(qa/"windows-light.png"))
                     w.main_btn.click()
                     assert controller.engine.phase=="focus"
@@ -69,6 +73,8 @@ def run():
                         w.restore()
                     w.configure(dark=True,pinned=True)
                     assert w.pin_btn.isChecked()
+                    assert w.home_passage.isVisible() and w.ctrl.sid is not None
+                    assert w.grab().save(str(qa/"reading-focus-dark.png"))
                     w.grab().save(str(qa/"windows-dark.png"))
                     w.navigate(2)
                     w.prefs.fields["volume"].setValue(37)
@@ -158,10 +164,20 @@ def run():
                     h.sky.enter(())
                     app.processEvents()
                     assert h.sky.size()==w.centralWidget().size()
+                    assert h.stage.passage.isVisible() and "starMap" in h.stage.passage.entry.scenes
+                    assert w.grab().save(str(qa/"reading-sky.png"))
+                    from neurofocus.reading_ui import Collection
+                    collection=Collection(w)
+                    collection.search.setText("夕阳与北辰")
+                    collection.show()
+                    app.processEvents()
+                    assert collection.current().id=="NF-V01-010" and not collection.enabled.isEnabled()
+                    assert collection.grab().save(str(qa/"reading-library.png"))
+                    collection.close()
                     w.grab().save(str(qa/"learning-universe.png"))
                     assert h.sky.export(str(qa/"universe-export.png"))
                     report=dict(success=True,platform=app.platformName(),
-                                calendar=True,archive=True,immersive_sky=True,deep_sky=True,
+                                calendar=True,archive=True,immersive_sky=True,deep_sky=True,literature=True,
                                 frozen=getattr(sys,"frozen",False),history_rows=1,tag_distribution=True,
                                 tray_available=w.tray.isSystemTrayAvailable())
                 except Exception:

@@ -1,7 +1,7 @@
 import ctypes
 import sqlite3
 from ctypes import wintypes
-from datetime import date
+from datetime import date, datetime
 from PySide6.QtCore import Qt, QEvent, QSize, QTimer
 from PySide6.QtGui import QPalette, QColor
 from PySide6.QtWidgets import (QApplication,QMainWindow,QWidget,QFrame,QStackedWidget,
@@ -13,6 +13,8 @@ from .pages import Preferences,Statistics,duration
 from .storage import buckets
 from .sound import Chimes
 from .archive_ui import Archive
+from .literature import Library
+from .reading_ui import Collection, Passage
 
 
 PHASE={"idle":"待机","focus":"专注中","micro":"微休息","long":"长休息"}
@@ -55,6 +57,10 @@ class Window(QMainWindow):
     def __init__(self,ctrl):
         super().__init__()
         self.ctrl=ctrl
+        self.library=Library(ctrl.path.parent/"literature.local.json")
+        self._reading_state=None
+        self._reading_session=None
+        self._pinned_readings={}
         self.setWindowTitle("NeuroFocus · 专注学习")
         self.setMinimumSize(760,620)
         self.resize(990,744)
@@ -190,6 +196,8 @@ class Window(QMainWindow):
         controls.addStretch()
         center.addLayout(controls)
         col.addWidget(hero,1)
+        self.home_passage=Passage(self)
+        col.addWidget(self.home_passage)
         row=box(horizontal=True)
         row.addWidget(label("今日概览","head"))
         row.addStretch()
@@ -215,6 +223,46 @@ class Window(QMainWindow):
             metrics.addWidget(tile,1)
         col.addLayout(metrics)
         self.stack.addWidget(page)
+
+    def manage_reading(self):
+        Collection(self).exec()
+
+    def reading_refresh(self, *, another=None, force=False):
+        cfg=self.ctrl.settings
+        sid=self.ctrl.sid
+        if sid!=self._reading_session:
+            self._reading_session=sid
+            self._pinned_readings.clear()
+        stage=self.archive.stage
+        sky=self.stack.currentIndex()==3 and not stage.isHidden()
+        surface=stage.passage if sky else self.home_passage
+        scene="starMap" if sky else "focus" if sid is not None else "home"
+        active=self.stack.currentIndex()==0 or sky
+        today=date.today()
+        key=(active,scene,sid,today,cfg.literary,cfg.literary_focus,cfg.literary_frequency)
+        if not force and not another and key==self._reading_state:
+            return
+        self._reading_state=key
+        if not active:
+            return
+        if not cfg.literary or (sid is not None and not cfg.literary_focus):
+            surface.present(None)
+            return
+        if sid is not None and scene in self._pinned_readings:
+            item=self.library.entries.get(self._pinned_readings[scene])
+            surface.present(item if item and item.enabled and item.text else None)
+            return
+        token=("cycle-"+str(sid) if scene=="focus" else
+               "manual" if cfg.literary_frequency=="仅手动更换" else today.isoformat())
+        try:
+            item=self.library.choose(scene,datetime.now(),period=token,another=(another==scene and sid is None))
+        except (ValueError,OSError) as exc:
+            self.library.problem=f"文案状态暂时无法保存。{exc}"
+            surface.present(None)
+            return
+        if sid is not None:
+            self._pinned_readings[scene]=item.id if item else ""
+        surface.present(item)
 
     def refresh_tags(self):
         picker=self.tag_picker
@@ -379,6 +427,7 @@ class Window(QMainWindow):
     def render(self):
         e=self.ctrl.engine
         idle=e.phase=="idle"
+        self.reading_refresh()
         cfg=self.ctrl.settings if idle else e.config
         today=date.today()
         self.dateline.setText(f"{today.year} 年 {today.month:02} 月 {today.day:02} 日   /   星期"+"一二三四五六日"[today.weekday()])

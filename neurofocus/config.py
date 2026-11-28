@@ -23,11 +23,16 @@ class Settings:
     notify: bool = True
     tray: bool = True
     sky_low_motion: bool = False
+    literary: bool = True
+    literary_focus: bool = True
+    literary_frequency: str = "每日一则"
     calendar_low: int = 30
     calendar_mid: int = 90
     calendar_high: int = 180
 
     def __post_init__(self):
+        if self.literary_frequency not in ("每日一则", "仅手动更换"):
+            raise ValueError("未知文案更新频率")
         cuts=(self.calendar_low,self.calendar_mid,self.calendar_high)
         if any(type(n) is not int for n in cuts) or not 0<cuts[0]<cuts[1]<cuts[2]<=1440:
             raise ValueError("日历阈值须按升序排列，范围 1–1440 分钟")

@@ -35,6 +35,11 @@ def stylesheet(c):
     QWidget {{color:{c['ink']};font-family:'Segoe UI','Microsoft YaHei UI';font-size:14px;}}
     QMainWindow, QDialog, QWidget#shell, QStackedWidget, QScrollArea, QWidget#form {{background:{c['bg']};}}
     QLabel, QCheckBox {{background:transparent;}}
+    QLabel#readingBody {{font-family:'Noto Serif CJK SC','SimSun','Songti SC';font-size:17px;color:{c['ink']};}}
+    QLabel#readingCredit {{font-size:11px;color:{c['muted']};}}
+    QToolButton#readingMenu {{background:transparent;border:0;padding:3px 7px;color:{c['muted']};}}
+    QToolButton#readingMenu:hover {{background:{c['tint']};}}
+    QToolButton#readingMenu::menu-indicator {{image:none;}}
     QFrame#side {{background:{c['side']};}}
     QLabel[role="brand"] {{color:#F0F5E9;font-size:23px;font-weight:650;}}
     QLabel[role="sidecap"] {{color:#A5BDAA;font-size:12px;}}

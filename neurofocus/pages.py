@@ -72,6 +72,15 @@ class Preferences(QScrollArea):
         self.check("dark","深色模式")
         self.check("pinned","主窗口置顶")
         self.check("tray","最小化时收入系统托盘")
+        self.section("文学文案")
+        self.check("literary","显示文学文案")
+        self.check("literary_focus","专注期间显示文案")
+        frequency=QComboBox()
+        frequency.addItems(["每日一则","仅手动更换"])
+        frequency.setCurrentText(window.ctrl.settings.literary_frequency)
+        frequency.currentTextChanged.connect(lambda v:self.change("literary_frequency",v))
+        self.row("literary_frequency","首页与星图更新频率",frequency)
+        self.group.addWidget(button("管理文案库…",handler=window.manage_reading),0,Qt.AlignLeft)
         self.layout_.addStretch()
 
     def section(self,title,note=None):
