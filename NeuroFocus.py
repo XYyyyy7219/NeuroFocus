@@ -176,7 +176,22 @@ def run():
                     collection.close()
                     w.grab().save(str(qa/"learning-universe.png"))
                     assert h.sky.export(str(qa/"universe-export.png"))
-                    report=dict(success=True,platform=app.platformName(),
+                    w.navigate(0)
+                    from dataclasses import replace
+                    custom=replace(controller.profiles.create(),name="打包验证")
+                    controller.save_profile(custom)
+                    for mode in ("neuro","pomo","deep","flow",custom.id):
+                        controller.profiles.select(mode)
+                        w.render()
+                        w.main_btn.click()
+                        assert controller.engine.config.id==mode
+                        assert (w.dial.state[2] is None)==(mode=="flow")
+                        w.advance("ended")
+                        w.render()
+                    w.navigate(1)
+                    w.stats.tabs.setCurrentWidget(w.stats.mode_stats)
+                    assert w.stats.mode_stats.table.rowCount()>=1
+                    report=dict(success=True,platform=app.platformName(),focus_engine=True,
                                 calendar=True,archive=True,immersive_sky=True,deep_sky=True,literature=True,
                                 frozen=getattr(sys,"frozen",False),history_rows=1,tag_distribution=True,
                                 tray_available=w.tray.isSystemTrayAvailable())

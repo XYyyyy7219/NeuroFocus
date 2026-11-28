@@ -14,6 +14,7 @@ class Settings:
     micro: int = 10
     micro_on: bool = True
     auto_long: bool = True
+    auto_next: bool = False
     inclusive: bool = True
     audio: bool = True
     volume: int = 45

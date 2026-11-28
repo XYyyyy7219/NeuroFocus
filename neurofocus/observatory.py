@@ -1,6 +1,5 @@
 """Immersive window overlay; the archive owns all data and filtering state."""
 from html import escape
-import json
 from PySide6.QtCore import Qt,QEvent,QTimer,QSignalBlocker,QRectF
 from PySide6.QtGui import QShortcut,QKeySequence
 from PySide6.QtWidgets import (QWidget,QFrame,QLineEdit,QMenu,QDialog,QComboBox,QCheckBox,
@@ -9,6 +8,7 @@ from .widgets import box,label,button
 from .reading_ui import Passage
 from .distribution import short_time
 from .history import wall_time
+from .modes import snapshot_title
 
 STYLE="""
 QWidget#observatory {background:#080f1d;}
@@ -286,15 +286,14 @@ class Observatory(QWidget):
         sid=a.key[0]
         row=self.h.db.execute("SELECT config FROM session_protocol WHERE sid=?",(sid,)).fetchone()
         micro=self.h.db.execute("SELECT sum(micro_count),sum(micro) FROM days WHERE sid=?",(sid,)).fetchone()
-        protocol="旧版未记录"
-        if row:
-            cfg=json.loads(row[0])
-            protocol=f"{cfg['focus']} 分钟 · "+("随机微休息" if cfg['micro_on'] else "连续专注")
+        protocol=escape(snapshot_title(row[0] if row else None))
+        rests=dict(self.h.db.execute("SELECT kind,sum(ms) FROM rest_days WHERE sid=? GROUP BY kind",(sid,)))
         def safe(value): return escape(str(value)).replace("\n","<br>")
         tag=self.h.tags[a.tag].name
         parts=[f"<h3>{safe(a.note[0] or tag)}</h3>",
                f"<p>{safe(tag)}　·　{a.day}<br>{wall_time(a.started)} — {wall_time(a.ended)}</p>",
                f"<p>实际学习　<b>{short_time(a.ms)}</b><br>周期策略　{protocol}<br>周期微休息　{micro[0] or 0} 次 · {short_time(micro[1] or 0)}</p>"]
+        if rests: parts.append(f"<p>周期短休息　{short_time(rests.get('short',0))}<br>周期自主休息　{short_time(rests.get('manual',0))}</p>")
         for name,value in zip(("学习收获","疑问与思考","下一步","学习体验"),a.note[1:]):
             if value: parts.append(f"<p><b>{name}</b><br>{safe(value)}</p>")
         if not any(a.note): parts.append("<p>可在「日志」中为这次学习补记一句话。</p>")

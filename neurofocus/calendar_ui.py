@@ -387,6 +387,8 @@ class StudyCalendar(QScrollArea):
         if has:
             text=(f"涉及 {item.cycles} 轮，完成 {item.completed} 轮　·　微休息 {item.micro} 次 / {short_time(item.short_ms)}"
                   f"　·　长休息 {short_time(item.long_ms)}")
+            if item.short_rest: text+=f"　·　短休息 {short_time(item.short_rest)}"
+            if item.manual_rest: text+=f"　·　自主休息 {short_time(item.manual_rest)}"
             if self.filter is not None: text+="（休息和完成数按关联周期去重）"
         self.note.setText(text if valid else "请选择有效日期范围")
         self.ring.rows=[(self.tags[k],ms,ms/item.ms,ms) for k,ms in item.tags.most_common()]

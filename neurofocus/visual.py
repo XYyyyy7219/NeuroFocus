@@ -49,8 +49,9 @@ def font(size, weight=QFont.Normal, family="Microsoft YaHei UI"):
     return f
 
 
-def stamp(ms):
-    seconds = max(0, math.ceil(ms/1000))
+def stamp(ms, count_up=False):
+    seconds = max(0, ms//1000 if count_up else math.ceil(ms/1000))
+    if count_up and seconds>=3600: return f"{seconds//3600}:{seconds//60%60:02}:{seconds%60:02}"
     return f"{seconds//60:02}:{seconds%60:02}"
 
 
@@ -59,6 +60,7 @@ class Dial(QWidget):
         super().__init__()
         self.colors = LIGHT
         self.state = ("90:00", "准备专注", 0., "focus")
+        self.mode = 'neuro'
         self.setMinimumSize(200,200)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.setAccessibleName("阶段倒计时")
@@ -71,17 +73,21 @@ class Dial(QWidget):
         p.scale(side/300,side/300)
         t, title, ratio, phase = self.state
         c = self.colors
-        accent = c["coral"] if phase == "micro" else c["accent"]
+        dark=c==DARK
+        accent={"pomo":c['coral'],"deep":"#9FBFD1" if dark else "#496E89",
+                "flow":"#C2B6D5" if dark else "#78628A"}.get(self.mode,c['accent'])
+        if phase=='micro': accent=c['coral']
         rect = QRectF(-131,-131,262,262)
-        p.setPen(QPen(QColor(c["track"]),6))
+        p.setPen(QPen(QColor(accent if ratio is None else c["track"]),2 if ratio is None else 6))
         p.drawEllipse(rect)
         p.setPen(QPen(QColor(accent),6,Qt.SolidLine,Qt.RoundCap))
-        p.drawArc(rect,90*16,-round(5760*ratio))
-        a = ratio*2*math.pi-math.pi/2
-        pt = QPointF(131*math.cos(a),131*math.sin(a))
-        p.setBrush(QColor(accent))
-        p.setPen(QPen(QColor(c["card"]),2))
-        p.drawEllipse(pt,5.5,5.5)
+        if ratio is not None:
+            p.drawArc(rect,90*16,-round(5760*ratio))
+            a = ratio*2*math.pi-math.pi/2
+            pt = QPointF(131*math.cos(a),131*math.sin(a))
+            p.setBrush(QColor(accent))
+            p.setPen(QPen(QColor(c["card"]),2))
+            p.drawEllipse(pt,5.5,5.5)
         for i in range(60):
             p.setPen(QPen(QColor(c["muted"] if i%5==0 else c["line"]),1))
             p.drawLine(QPointF(0,-117),QPointF(0,-111 if i%5==0 else -114))
@@ -94,7 +100,8 @@ class Dial(QWidget):
         p.drawText(QRectF(-120,-40,240,80),Qt.AlignCenter,t)
         p.setPen(QColor(c["muted"]))
         p.setFont(font(11,QFont.DemiBold,"Segoe UI"))
-        p.drawText(QRectF(-100,43,200,22),Qt.AlignCenter,"M I N   /   S E C")
+        unit="已 学 时 间" if ratio is None else "M I N   /   S E C"
+        p.drawText(QRectF(-100,43,200,22),Qt.AlignCenter,unit)
         p.end()
 
 

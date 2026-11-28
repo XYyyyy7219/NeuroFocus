@@ -145,7 +145,17 @@ class Archive(QWidget):
         q=self.query.text().strip()
         rows=[a for a in self.items.values() if low<=a.day<=high and (tag is None or tag==a.tag)
               and (a.matches(q) or q.casefold() in self.tags[a.tag].name.casefold()) and (not journal or any(a.note))]
-        if timeline: self.timeline.render_rows(rows,self.tags,start,n)
+        if timeline:
+            from datetime import datetime,time
+            begin=round(datetime.combine(start,time()).timestamp()*1000)
+            end=round(datetime.combine(start+timedelta(days=n),time()).timestamp()*1000)
+            allowed={a.key[0] for a in rows}
+            markers=[(at,kind,name) for at,kind,name,sid in self.db.execute("""
+                SELECT e.at,e.kind,coalesce(json_extract(p.config,'$.name'),'旧版记录'),e.sid FROM study_events e
+                LEFT JOIN session_protocol p USING(sid) WHERE e.at>=? AND e.at<? AND e.kind IN
+                ('micro_start','short_start','long_start','manual_start') AND (? IS NULL OR e.tag=?)""",(begin,end,tag,tag))
+                if not q or sid in allowed]
+            self.timeline.render_rows(rows,self.tags,start,n,markers)
         if sky:
             self.sky_rows=rows
             prev_cut=self.cutoff.text()
@@ -174,7 +184,7 @@ class Archive(QWidget):
         if a:
             title=a.note[0] or self.tags[a.tag].name
             text=f"{title}　·　{a.day}　{wall_time(a.started)}–{wall_time(a.ended)}　·　实际 {short_time(a.ms)}"
-            self.info.setText(text+("\n"+a.note[1][:100] if a.note[1] else ""))
+            self.info.setText(text+"　·　"+a.mode_name+("\n"+a.note[1][:100] if a.note[1] else ""))
         else: self.info.clear()
 
     def from_list(self,index):
@@ -280,7 +290,7 @@ class Archive(QWidget):
         a=self.items[self.current]
         path,_=QFileDialog.getSaveFileName(self,"导出学习日志",a.day+".md","Markdown (*.md)")
         if path:
-            try: Path(path).write_text(markdown(a,self.tags[a.tag].name),encoding="utf-8")
+            try: Path(path).write_text(markdown(a,self.tags[a.tag].name)+"\n\n## 本轮记录\n\n"+session_detail(self.db,a),encoding="utf-8")
             except OSError as exc: QMessageBox.warning(self,"导出失败",str(exc))
 
     def export_sky(self):

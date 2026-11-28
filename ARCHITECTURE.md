@@ -1,5 +1,9 @@
 # 架构与边界
 
+## Focus Engine 2.0
+
+Windows 四种内置模式与自定义方案共享 Engine 的毫秒边界循环。Profile 描述计时方向、随机微休息、轮组和休息选择；Controller 决定运行时切换、恢复与自动续轮。每个会话保存创建时的完整快照。模式分布读取既有学习片段，并按档案的活动边界分组。设计细节、状态边界与新增表见[计时引擎](docs/design/focus-engine-v2.md)，界面示例见[模式界面设计](docs/design/focus-mode-ui.md)。
+
 ## 文学文案
 
 `literature.py` 独立于 Qt，读取明确列入打包清单的 `literary_catalog.json`。私有条目、对内置条目的修改、各场景选定记录及近 16 条展示历史原子写入便携目录的 `data/literature.local.json`。沿用程序现有单实例锁。已有学习 SQLite 数据与文案互相独立，导出学习统计也不会带出摘录。

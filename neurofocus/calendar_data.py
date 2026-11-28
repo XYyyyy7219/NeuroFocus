@@ -29,6 +29,8 @@ class Day:
     micro: int = 0
     short_ms: int = 0
     long_ms: int = 0
+    short_rest: int = 0
+    manual_rest: int = 0
 
 
 class CalendarData:
@@ -55,11 +57,14 @@ class CalendarData:
             self.tags[key]+=ms
             self.ms+=ms
         self.active=len(self.days)
-        for day,count,done,events,short,long in db.execute("""SELECT day,count(*),
-            sum(completed),sum(micro_count),sum(micro),sum(long) FROM days
+        for day,count,done,events,short,long,sr,mr in db.execute("""SELECT day,count(*),
+            sum(completed),sum(micro_count),sum(micro),sum(long),
+            sum((SELECT ms FROM rest_days r WHERE r.sid=days.sid AND r.day=days.day AND r.kind='short')),
+            sum((SELECT ms FROM rest_days r WHERE r.sid=days.sid AND r.day=days.day AND r.kind='manual')) FROM days
             WHERE day BETWEEN ? AND ?"""+session_sql+" GROUP BY day",args):
             item=self.days.setdefault(date.fromisoformat(day),Day())
             item.cycles,item.completed,item.micro,item.short_ms,item.long_ms=count,done,events,short,long
+            item.short_rest,item.manual_rest=sr or 0,mr or 0
             self.completed+=done
 
     @property

@@ -2,10 +2,11 @@ import ctypes
 import sqlite3
 from ctypes import wintypes
 from datetime import date, datetime
+from dataclasses import replace
 from PySide6.QtCore import Qt, QEvent, QSize, QTimer
 from PySide6.QtGui import QPalette, QColor
 from PySide6.QtWidgets import (QApplication,QMainWindow,QWidget,QFrame,QStackedWidget,
-    QMenu,QSystemTrayIcon,QMessageBox,QComboBox)
+    QMenu,QSystemTrayIcon,QMessageBox,QComboBox,QInputDialog)
 from .tag_ui import swatch, edit_tag, TagManager
 from .visual import LIGHT,DARK,icon,stamp,Dial,Terrain
 from .widgets import box,label,button,card,stylesheet
@@ -15,12 +16,18 @@ from .sound import Chimes
 from .archive_ui import Archive
 from .literature import Library
 from .reading_ui import Collection, Passage
+from .mode_ui import ModeChooser, ProfileEditor
+from .modes import DESCRIPTIONS,RESTS,REST_LABELS
 
 
-PHASE={"idle":"待机","focus":"专注中","micro":"微休息","long":"长休息"}
+PHASE={"idle":"待机","focus":"专注中","ready":"等待休息",**REST_LABELS}
 NOTICES={"micro_start":"放松，自然休息","resume_focus":"微休息结束，继续学习",
          "long_start":"专注周期已完成，进入长休息","long_end":"长休息结束，可以开始下一轮",
          "complete":"专注周期已完成","wake_pause":"系统已唤醒，点击继续开始计时"}
+
+
+NOTICES.update(short_start="本轮完成，进入短休息",short_end="短休息结束",manual_start="已进入自主休息",
+               manual_end="自主休息结束",rest_hint="可以按自己的节奏休息片刻",auto_start="下一轮专注已开始")
 
 
 class Mini(QWidget):
@@ -100,6 +107,8 @@ class Window(QMainWindow):
         self.protocol=label("","sidevalue")
         self.protocol.setWordWrap(True)
         side_box.addWidget(self.protocol)
+        self.quick_btn=button("快捷参数…","nav",self.quick_parameters)
+        side_box.addWidget(self.quick_btn)
         content=box(margins=(26,22,26,22),spacing=12)
         root.addLayout(content,1)
         toolbar=box(horizontal=True)
@@ -159,13 +168,15 @@ class Window(QMainWindow):
         hero=card()
         center=box(hero,margins=(20,14,20,16),spacing=3)
         row=box(horizontal=True)
-        row.addWidget(label("本轮专注","head"))
+        self.mode_button=button("NeuroFocus ▾",handler=self.choose_mode)
+        self.mode_button.setAccessibleName("选择专注模式")
+        row.addWidget(self.mode_button)
         self.tag_picker=QComboBox()
         self.tag_picker.setAccessibleName("当前学习标签")
         self.tag_picker.setToolTip("选择学习标签，可在专注中切换")
         self.tag_picker.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
         self.tag_picker.setMinimumContentsLength(5)
-        self.tag_picker.setMaximumWidth(190)
+        self.tag_picker.setMaximumWidth(145)
         self.refresh_tags()
         self.tag_picker.activated.connect(self.pick_tag)
         row.addWidget(self.tag_picker)
@@ -189,6 +200,8 @@ class Window(QMainWindow):
         self.main_btn=button("开始专注","primary",self.primary_action)
         self.main_btn.setMinimumWidth(148)
         controls.addWidget(self.main_btn)
+        self.rest_btn=button("休息",handler=self.rest_action)
+        controls.addWidget(self.rest_btn)
         self.stop_btn=self.tool("stop","结束本轮",lambda:self.finish("ended"))
         self.reset_btn=self.tool("reset","重置本轮",lambda:self.finish("reset"))
         for b in (self.stop_btn,self.reset_btn):
@@ -223,6 +236,61 @@ class Window(QMainWindow):
             metrics.addWidget(tile,1)
         col.addLayout(metrics)
         self.stack.addWidget(page)
+
+    def choose_mode(self):
+        try: ModeChooser(self).exec()
+        except (ValueError,sqlite3.Error,OSError) as exc:
+            QMessageBox.warning(self,"模式未保存",str(exc))
+
+    def quick_parameters(self):
+        p=self.ctrl.selected_profile
+        menu=QMenu(self)
+        if not p.count_up:
+            for n in (30,45,60,90):
+                menu.addAction(f"专注 {n} 分钟",lambda _,v=n:self.change_duration(p,"focus",v))
+            menu.addSeparator()
+            menu.addAction("自选专注时长…",lambda:self.change_duration(p,"focus"))
+        if p.count_up and p.suggest:
+            menu.addAction("调整休息建议…",lambda:self.edit_rest_suggestions(p))
+        else:
+            menu.addAction("调整自主休息…" if p.count_up else "调整长休息…",lambda:self.change_duration(p,"long"))
+            if p.short_on: menu.addAction("调整短休息…",lambda:self.change_duration(p,"short"))
+        if p.grouped: menu.addAction("调整每组轮数…",lambda:self.change_duration(p,"rounds"))
+        menu.exec(self.quick_btn.mapToGlobal(self.quick_btn.rect().topLeft()))
+
+    def edit_rest_suggestions(self,profile):
+        dialog=ProfileEditor(self,profile)
+        if dialog.exec():
+            try:
+                self.ctrl.save_profile(dialog.result_profile)
+                self.render()
+            except (ValueError,sqlite3.Error,OSError) as exc:
+                QMessageBox.warning(self,"参数未保存",str(exc))
+
+    def change_duration(self,p,field,value=None):
+        if value is None:
+            title,lo,hi={"focus":("专注分钟",1,720),"long":("休息分钟",1,180),"short":("短休息分钟",1,180),"rounds":("每组轮数",2,24)}[field]
+            value,ok=QInputDialog.getInt(self,"下一轮参数",title,getattr(p,field),lo,hi)
+            if not ok: return
+        try:
+            self.ctrl.save_profile(replace(p,**{field:value}))
+            self.prefs.sync()
+            self.render()
+        except (ValueError,sqlite3.Error,OSError) as exc:
+            QMessageBox.warning(self,"参数未保存",str(exc))
+
+    def rest_action(self):
+        e=self.ctrl.engine
+        if e.phase in (*RESTS,'ready'):
+            self.advance("skip_rest")
+        elif e.phase in ("focus","micro"):
+            sid=self.ctrl.sid
+            value,ok=QInputDialog.getInt(self,"自主休息","休息时长（分钟）",
+                e.config.suggested_minutes(e.actual,e.round_index),1,180)
+            if not ok or sid!=self.ctrl.sid or e.phase not in ("focus","micro"): return
+            try: self.notify_events(self.ctrl.update("rest",minutes=value))
+            except sqlite3.Error as exc: self.db_error(exc)
+        self.render()
 
     def manage_reading(self):
         Collection(self).exec()
@@ -408,8 +476,10 @@ class Window(QMainWindow):
         try:
             if e.phase=="idle":
                 self.ctrl.start()
+                self.play("start")
                 self.journal_link.hide()
                 self.last_message=""
+            elif e.phase=='ready': self.advance('begin_rest')
             else:
                 self.advance("resume" if e.paused else "pause")
             self.render()
@@ -428,35 +498,55 @@ class Window(QMainWindow):
         e=self.ctrl.engine
         idle=e.phase=="idle"
         self.reading_refresh()
-        cfg=self.ctrl.settings if idle else e.config
+        cfg=self.ctrl.selected_profile if idle else e.config
         today=date.today()
         self.dateline.setText(f"{today.year} 年 {today.month:02} 月 {today.day:02} 日   /   星期"+"一二三四五六日"[today.weekday()])
-        self.protocol.setText(f"{cfg.focus} 分钟专注   /   {cfg.long} 分钟休息")
+        next_p=self.ctrl.selected_profile
+        self.protocol.setText(cfg.name+"\n"+cfg.summary()+(("\n下一轮 · "+next_p.name) if not idle and next_p!=cfg else ""))
+        self.mode_button.setText(self.fontMetrics().elidedText(cfg.name,Qt.ElideRight,105)+" ▾")
+        self.mode_button.setToolTip("选择或配置下一轮模式" if not idle else "选择与配置专注模式")
         status=("已暂停" if e.paused else PHASE[e.phase])
         title=("准备专注" if idle else PHASE[e.phase]) if not e.paused else PHASE[e.phase]+" · 已暂停"
-        time=stamp(cfg.focus*60000 if idle else e.remaining())
-        progress=0 if idle else e.used/e.target
+        up=cfg.count_up and (idle or e.phase=="focus")
+        ms=(0 if up else cfg.focus*60000) if idle else e.remaining()
+        time=stamp(ms,up)
+        if up: progress=None
+        elif idle: progress=0.
+        elif e.phase in RESTS: progress=1-e.left/e.rest_total
+        elif cfg.count_up: progress=1-e.left/(cfg.micro*1000)
+        else: progress=e.used/e.target
+        if self.dial.mode!=cfg.id:
+            self.dial.mode=cfg.id
+            self.dial.update()
         state=(time,title,progress,e.phase)
         if self.dial.state!=state:
             self.dial.state=state
             self.dial.setAccessibleDescription(f"{title} {time}")
             self.dial.update()
         self.badge.setText(status)
-        self.mini.phase.setText(title)
+        self.mini.phase.setText(title if not up else "自由专注 · "+status)
         self.mini.time.setText(time)
         if idle:
-            note=self.last_message or f"{cfg.focus} 分钟专注   ·   "+("随机微休息" if cfg.micro_on else "连续专注")
+            note=self.last_message or DESCRIPTIONS.get(cfg.id,"自定义专注")+"   ·   "+cfg.summary()
         elif e.paused: note="计时已暂停，准备好后继续"
-        elif e.phase=="micro": note=f"放松，自然休息   ·   周期进度 {progress:.0%}"
-        elif e.phase=="long": note="专注周期已完成，给自己一段休息时间"
+        elif e.phase=="micro": note="放松，自然休息"
+        elif e.phase in RESTS: note=REST_LABELS[e.phase]+"   ·   "+("到点进入下一轮" if cfg.auto_next else "到点后手动开始下一轮")
+        elif e.phase=='ready': note='本轮完成，准备好后开始休息'
+        elif up: note="正向计时   ·   可随时进入休息"
         else: note=f"专注周期进度   {progress:.0%}"
+        if cfg.grouped:
+            index=self.ctrl.next_round(cfg) if idle else e.round_index
+            note=f"第 {index} / {cfg.rounds} 轮   ·   "+note
+        if not idle and next_p!=cfg: note+="   ·   下一轮 "+next_p.name
         self.caption.setText(note)
-        text="开始专注" if idle else "继续" if e.paused else "暂停"
+        text="开始专注" if idle else "开始"+REST_LABELS[cfg.rest(e.round_index)] if e.phase=="ready" else "继续" if e.paused else "暂停"
         if self.last_button!=text:
             self.last_button=text
             self.main_btn.setText("  "+text)
             self.main_btn.setIcon(icon("pause" if text=="暂停" else "play",self.dial.colors["card"]))
             self.tray_action.setText(text)
+        self.rest_btn.setVisible(not idle)
+        self.rest_btn.setText("跳过休息" if e.phase=="ready" else "结束休息" if e.phase in RESTS else "进入休息")
         self.stop_btn.setVisible(not idle)
         self.reset_btn.setVisible(not idle)
         # Skip idle disk reads and avoid redrawing history while navigating it.
@@ -471,7 +561,7 @@ class Window(QMainWindow):
         self.values[0].setText(duration(actual))
         self.values[1].setText(f"{complete} 轮")
         self.values[2].setText(f"{micro} 次")
-        self.tray.setToolTip(f"NeuroFocus · {title} {time}")
+        self.tray.setToolTip(f"{cfg.name} · {title} {time}")
         interval=1000 if idle or e.paused else 250 if self.isVisible() or self.mini.isVisible() else 1000
         if self.timer.interval()!=interval: self.timer.setInterval(interval)
 

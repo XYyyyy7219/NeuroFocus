@@ -5,7 +5,7 @@ from PySide6.QtGui import QPainter,QPen,QColor
 from PySide6.QtWidgets import (QWidget,QDialog,QLineEdit,QPlainTextEdit,QComboBox,QMessageBox,
                                QScrollArea,QGraphicsView,QGraphicsScene,QVBoxLayout,QDialogButtonBox)
 from .widgets import box,label,button
-from .history import save_note, wall_time
+from .history import save_note, wall_time, session_detail, EVENTS
 from .distribution import short_time
 
 
@@ -40,8 +40,10 @@ class Timeline(QGraphicsView):
         self.tags={}
         self.start=date.today()
         self.n=1
+        self.markers=[]
         self.setAccessibleName("按实际时间绘制的学习活动")
-    def render_rows(self,rows,tags,start,n):
+    def render_rows(self,rows,tags,start,n,markers=()):
+        self.markers=markers
         self.rows,self.tags,self.start,self.n=rows,tags,start,n
         self.redraw()
     def resizeEvent(self,event):
@@ -62,7 +64,7 @@ class Timeline(QGraphicsView):
             t.setBrush(color)
             t.setPos(x,y)
             return t
-        if not self.rows:
+        if not self.rows and not self.markers:
             caption(12,18,"此日期范围没有学习活动",clock)
             scene.setSceneRect(0,0,w,80)
             return
@@ -71,8 +73,9 @@ class Timeline(QGraphicsView):
             return (dt.date()-day).days*1440+dt.hour*60+dt.minute+dt.second/60+dt.microsecond/6e7
         timed=[(a,minute(a.started,date.fromisoformat(a.day)),minute(a.ended,date.fromisoformat(a.day)))
                for a in self.rows if a.started is not None]
-        low=max(0,int(min((x[1] for x in timed),default=8*60)//60))
-        high=min(24,max(low+1,int(max((x[2] for x in timed),default=9*60)//60)+1))
+        marker_minutes=[minute(at,datetime.fromtimestamp(at/1000).date()) for at,_,_ in self.markers]
+        low=max(0,int(min([x[1] for x in timed]+marker_minutes,default=8*60)//60))
+        high=min(24,max(low+1,int(max([x[2] for x in timed]+marker_minutes,default=9*60)//60)+1))
         scale=max(.06,min(2.5,(self.viewport().height()-62)/max(60,60*(high-low))))
         y=lambda m: 32+(m-60*low)*scale
         for i in range(self.n):
@@ -89,12 +92,18 @@ class Timeline(QGraphicsView):
             height=max(2,y(end)-y(begin))
             item=scene.addRect(x,y(begin),max(4,col-5),height,QPen(color),fill)
             item.setData(0,a.key)
-            tip=f"{a.note[0] or self.tags[a.tag].name}　{wall_time(a.started)}–{wall_time(a.ended)}　有效 {short_time(a.ms)}"
+            tip=f"{a.mode_name} · {a.note[0] or self.tags[a.tag].name}　{wall_time(a.started)}–{wall_time(a.ended)}　有效 {short_time(a.ms)}"
             item.setToolTip(tip)
             if height>20 and col>72:
                 title=caption(x+4,y(begin),self.fontMetrics().elidedText(("◉ " if any(a.note) else "")+(a.note[0] or self.tags[a.tag].name),Qt.ElideRight,int(col-12)),clock)
                 title.setData(0,a.key)
                 title.setToolTip(tip)
+        for at,kind,mode in self.markers:
+            day=datetime.fromtimestamp(at/1000).date()
+            x=53+(day-self.start).days*col
+            colors={"micro_start":"#6D9C89","short_start":"#C39062","long_start":"#728FB8","manual_start":"#9C85B1"}
+            mark=scene.addRect(x,y(minute(at,day)),max(7,col*.16),3,QPen(Qt.NoPen),QColor(colors[kind]))
+            mark.setToolTip(f"{wall_time(at)} · {EVENTS[kind]} · {mode}")
         if len(timed)<len(self.rows): caption(52,y(high*60)+15,"旧版日汇总见下方列表",clock)
         scene.setSceneRect(scene.itemsBoundingRect().adjusted(0,0,3,5))
     def mousePressEvent(self,e):
@@ -111,6 +120,14 @@ class JournalEditor(QDialog):
         self.resize(510,410)
         col=box(self,margins=18)
         col.addWidget(label(f"{a.day}　{tag}　·　实际学习 {short_time(a.ms)}","head"))
+        summary=button("本轮参数与休息 · "+a.mode_name)
+        detail=QPlainTextEdit(session_detail(db,a))
+        detail.setReadOnly(True)
+        detail.setMaximumHeight(115)
+        detail.hide()
+        summary.clicked.connect(lambda:detail.setVisible(detail.isHidden()))
+        col.addWidget(summary,0,Qt.AlignLeft)
+        col.addWidget(detail)
         self.topic=QLineEdit(a.note[0])
         self.gain=QPlainTextEdit(a.note[1])
         self.gain.setPlaceholderText("一句话记下理解了什么，或完成了什么")

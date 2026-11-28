@@ -3,6 +3,7 @@ import sqlite3
 from pathlib import Path
 from .distribution import Distribution
 from .calendar_ui import StudyCalendar
+from .mode_ui import ModeStats
 from PySide6.QtCore import Qt, QRectF
 from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import (QWidget,QCheckBox,QComboBox,QSpinBox,QSlider,QScrollArea,
@@ -32,7 +33,8 @@ class Preferences(QScrollArea):
         body.setObjectName("form")
         self.setWidget(body)
         self.layout_ = box(body, margins=(0,0,6,6),spacing=14)
-        self.section("计时方案", "修改后从下一轮开始使用")
+        self.section("NeuroFocus · 随机微休息", "修改后从下一轮开始使用")
+        self.group.addWidget(button("选择或配置其他模式…",handler=window.choose_mode),0,Qt.AlignLeft)
         for key,name,unit in [
             ("focus","专注周期"," 分钟"),("long","长休息"," 分钟"),
             ("low","随机间隔下限"," 分钟"),("high","随机间隔上限"," 分钟"),
@@ -191,6 +193,8 @@ class Statistics(QWidget):
         self.tabs.addTab(self.distribution,"标签分布")
         self.calendar=StudyCalendar(window)
         self.tabs.addTab(self.calendar,"学习日历")
+        self.mode_stats=ModeStats(window.ctrl.store.db)
+        self.tabs.addTab(self.mode_stats,"专注模式")
         self.tabs.currentChanged.connect(self.refresh)
         layout=box(overview,margins=(0,8,0,0),spacing=12)
         top=card()
@@ -242,6 +246,9 @@ class Statistics(QWidget):
         self.refresh()
 
     def refresh(self,*_):
+        if self.tabs.currentWidget() is self.mode_stats:
+            self.mode_stats.refresh()
+            return
         if self.tabs.currentWidget() is self.calendar:
             self.calendar.refresh()
             return

@@ -16,7 +16,9 @@ Windows 2.1 的「学习星图」可以从学科星系进入主题，再点一�
 
 Windows 2.2 在专注页与学习星图中加入文学文案。内置《九州缥缈录Ⅰ：蛮荒》的 28 条人工索引和 8 则署名 NeuroFocus 的原创示例。在「偏好设置 → 文学文案 → 管理文案库」可以选取本地摘录、收藏或导入更多作品。[首页实机图](docs/screenshots/literature/home-light.png) · [星图实机图](docs/screenshots/literature/sky.png) · [后续卷导入格式](docs/literature.md)
 
-[下载 Windows 2.2 便携版](https://github.com/XYyyyy7219/NeuroFocus/releases/tag/windows-v2.2.0)。解压到可写目录，双击 `NeuroFocus.exe`。升级前正常退出程序，备份原目录的 `data` 文件夹，将新版程序和运行库解压到原目录。
+Windows 2.3 加入 Focus Engine 2.0。点表盘上方的模式名称，可选择随机微休息、番茄工作法、连续专注、自由正向计时，或保存多个自定义方案。在「学习统计 → 专注模式」可按日期比较各模式的实际学习时长与使用轮数。[模式选择实机图](docs/screenshots/focus-engine/mode-selector.png) · [Flowtime 实机图](docs/screenshots/focus-engine/flowtime.png) · [设计与数据口径](docs/design/focus-engine-v2.md) · [源码调研](docs/research/focus-mode-research.md) · [测试报告](docs/testing/focus-engine-test-report.md)
+
+[下载 Windows 2.3 便携版](https://github.com/XYyyyy7219/NeuroFocus/releases/tag/windows-v2.3.0)。解压到可写目录，双击 `NeuroFocus.exe`。升级前正常退出程序，备份原目录的 `data` 文件夹，将新版程序和运行库解压到原目录。
 
 Windows 11 x64 版支持托盘、悬浮小窗、置顶、可试听提示音和通知。Android 8.0 及以上版本提供适合触屏的界面和前台计时。两端各自在本地保存设置和学习记录，可按日、周、月查看实际专注时长，并导出 CSV。
 

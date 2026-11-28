@@ -6,6 +6,7 @@ from pathlib import Path
 from datetime import date, datetime, time, timedelta
 from .tags import Tags, migrate
 from . import history
+from .modes import Profile
 
 
 METRICS = ("focus", "micro", "long", "micro_count", "completed")
@@ -58,17 +59,19 @@ class Store:
         """)
         migrate(self.db)
         history.install(self.db)
+        self.db.execute("CREATE INDEX IF NOT EXISTS event_time ON study_events(at)")
         self.tags = Tags(self.db)
         with self.db:
             self.db.execute("UPDATE sessions SET status='interrupted' WHERE status='active'")
 
-    def start(self, wall, settings=None, tag=0):
+    def start(self, wall, settings=None, tag=0, round_index=1):
         with self.db:
             sid = self.db.execute("INSERT INTO sessions(started,updated,status) VALUES(?,?,'active')",
                                    (wall, wall)).lastrowid
             if settings is not None:
                 config = {k:getattr(settings,k) for k in ("focus","long","micro","low","high","micro_on","inclusive","auto_long")}
-                self.db.execute("INSERT INTO session_protocol(sid,config) VALUES(?,?)",(sid,json.dumps(config)))
+                if isinstance(settings,Profile): config={**asdict(settings),"round_index":round_index}
+                self.db.execute("INSERT INTO session_protocol(sid,config) VALUES(?,?)",(sid,json.dumps(config,ensure_ascii=False)))
                 self.db.execute("INSERT INTO study_events(sid,at,kind,tag) VALUES(?,?,'start',?)",(sid,wall,tag))
             return sid
 
@@ -76,6 +79,21 @@ class Store:
         rows = buckets(entries)
         with self.db:
             spans = {}
+            for entry in entries:
+                if entry.kind=='manual_plan':
+                    self.db.execute('INSERT OR REPLACE INTO manual_rest_plan VALUES(?,?)',(sid,entry.duration//60000))
+                if entry.kind in ("complete","flow_finish"):
+                    snapshot=self.db.execute("SELECT config FROM session_protocol WHERE sid=?",(sid,)).fetchone()
+                    cfg=json.loads(snapshot[0]) if snapshot else {}
+                    if cfg.get("grouped"):
+                        self.db.execute("INSERT OR REPLACE INTO cycle_cursor VALUES(?,?)",
+                            (cfg["id"],cfg["round_index"]%cfg["rounds"]+1))
+                if entry.kind in ("short","manual"):
+                    for day,_,ms in day_parts(entry.at,entry.duration):
+                        rows.setdefault(day,[0]*5)
+                        self.db.execute("""INSERT INTO rest_days VALUES(?,?,?,?)
+                            ON CONFLICT(sid,day,kind) DO UPDATE SET ms=rest_days.ms+excluded.ms""",
+                            (sid,day,entry.kind,ms))
             self.db.executemany("INSERT INTO study_events(sid,at,kind,tag) VALUES(?,?,?,?)",
                 ((sid,e.at,e.kind,tag_id) for e in entries if e.kind in history.EVENTS))
             paused = sum(e.duration for e in entries if e.kind=="paused_ms")
@@ -113,12 +131,15 @@ class Store:
 
     def export(self, path):
         headers = ["周期ID","开始时间","最后记录时间","状态","统计日期","实际专注秒",
-                   "微休息秒","长休息秒","微休息次数","完成周期数","标签ID","标签名称","标签颜色"]
+                   "微休息秒","长休息秒","微休息次数","完成周期数","标签ID","标签名称","标签颜色",
+                   "专注模式ID","模式名称","短休息秒","自主休息秒"]
         if Path(path).suffix.lower() == ".json":
             segments = self.db.execute("""SELECT sid,day,block,tag,started,ended,ms
                 FROM focus_spans ORDER BY sid,day,block""")
             names = [col[0] for col in segments.description]
             payload = dict(version=1,tags=[asdict(t) for t in self.tags.all()],
+                protocols=[dict(sid=sid,config=json.loads(raw),paused_ms=paused) for sid,raw,paused in
+                           self.db.execute("SELECT sid,config,paused_ms FROM session_protocol ORDER BY sid")],
                 records=[dict(zip(headers,row)) for row in self._export_rows()],
                 focus_spans=[dict(zip(names,row)) for row in segments])
             Path(path).write_text(json.dumps(payload,ensure_ascii=False,indent=2),encoding="utf-8")
@@ -131,19 +152,23 @@ class Store:
     def _export_rows(self):
         tags = {t.id:t for t in self.tags.all()}
         previous = None
-        for sid,start,end,status,day,key,focus,micro,long,count,completed in self.db.execute("""
+        for sid,start,end,status,day,key,focus,micro,long,count,completed,mode,name,sr,mr in self.db.execute("""
             WITH totals AS (SELECT sid,day,tag,sum(ms) AS ms FROM focus_spans GROUP BY sid,day,tag)
             SELECT s.id,s.started,s.updated,s.status,d.day,coalesce(t.tag,0),coalesce(t.ms,0),
-                   d.micro,d.long,d.micro_count,d.completed
-            FROM sessions s LEFT JOIN days d ON d.sid=s.id
+                   d.micro,d.long,d.micro_count,d.completed,coalesce(json_extract(p.config,'$.id'),'legacy'),
+                   coalesce(json_extract(p.config,'$.name'),'旧版记录'),sr.ms,mr.ms
+            FROM sessions s LEFT JOIN days d ON d.sid=s.id LEFT JOIN session_protocol p ON p.sid=s.id
+            LEFT JOIN rest_days sr ON sr.sid=s.id AND sr.day=d.day AND sr.kind='short'
+            LEFT JOIN rest_days mr ON mr.sid=s.id AND mr.day=d.day AND mr.kind='manual'
             LEFT JOIN totals t ON t.sid=s.id AND t.day=d.day ORDER BY s.id,d.day,t.tag"""):
             if previous == (sid,day):
-                micro,long,count,completed = 0,0,0,0
+                micro,long,count,completed,sr,mr = 0,0,0,0,0,0
             previous = sid,day
             tag = tags[key]
             fmt = lambda ms: datetime.fromtimestamp(ms/1000).astimezone().isoformat(timespec="seconds")
             yield [sid,fmt(start),fmt(end),STATUS[status],day or str(day_at(start)),focus/1000,
-                   (micro or 0)/1000,(long or 0)/1000,count or 0,completed or 0,key,tag.name,tag.color]
+                   (micro or 0)/1000,(long or 0)/1000,count or 0,completed or 0,key,tag.name,tag.color,
+                   mode,name,(sr or 0)/1000,(mr or 0)/1000]
 
 
 STATUS = dict(active="进行中", done="已完成", ended="手动结束", reset="已重置",

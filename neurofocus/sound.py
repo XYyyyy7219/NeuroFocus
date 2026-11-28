@@ -11,6 +11,10 @@ NOTES = {"micro_start": (523, 392), "resume_focus": (392, 587),
          "complete": (392, 494, 659)}
 
 
+NOTES.update(start=(349,494),short_start=(494,392),short_end=(392,523),manual_start=(440,349),
+             manual_end=(349,440),rest_hint=(440,),auto_start=(392,523,587))
+
+
 class Chimes:
     def __init__(self, directory):
         self.cache = TemporaryDirectory(prefix="audio-",dir=directory)
