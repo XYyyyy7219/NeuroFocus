@@ -10,7 +10,9 @@ Windows 的「学习统计 → 学习日历」可按标签回顾最近 3、6、1
 
 Windows 1.3 的「学习档案」提供日周时间轴、可补写的本地学习日志与分层星图。点击一次学习，就能回看当时的有效片段、写下次接续的位置，或在星图里找到这段经历。[学习档案使用说明](使用说明.md) · [星图方案对比](docs/design/learning-universe-design.md) · [Physics Atlas 源码分析](docs/research/physics-atlas-analysis.md)
 
-[下载 Windows 便携版](https://github.com/XYyyyy7219/NeuroFocus/releases/tag/windows-v1.3.0)。解压到可写目录，双击 `NeuroFocus.exe`。升级前正常退出程序，备份原目录的 `data` 文件夹，将新版程序和运行库解压到原目录。
+Windows 1.4 的学习星图以全窗画布展示按学科聚集的活动。可直接搜索主题或日志、聚焦单次活动，用 F11 全屏或开启低负载模式。[实机截图](docs/screenshots/sky-design/sky-112.png) · [三个视觉原型与源码研究](docs/research/immersive-sky.md)
+
+[下载 Windows 便携版](https://github.com/XYyyyy7219/NeuroFocus/releases/tag/windows-v1.4.0)。解压到可写目录，双击 `NeuroFocus.exe`。升级前正常退出程序，备份原目录的 `data` 文件夹，将新版程序和运行库解压到原目录。
 
 Windows 11 x64 版支持托盘、悬浮小窗、置顶、可试听提示音和通知。Android 8.0 及以上版本提供适合触屏的界面和前台计时。两端各自在本地保存设置和学习记录，可按日、周、月查看实际专注时长，并导出 CSV。
 

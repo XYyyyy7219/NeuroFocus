@@ -142,10 +142,17 @@ def run():
                     h.jump_sky()
                     app.processEvents()
                     assert len(h.sky.nodes)==10
+                    from neurofocus.starlight import texture
+                    assert not texture("deep-field.jpg").isNull() and not texture("spiral.png").isNull()
+                    assert h.stage.isVisible() and h.stage.detail_key==h.current
+                    h.sky.set_low(True)
+                    h.sky.enter(())
+                    app.processEvents()
+                    assert h.sky.size()==w.centralWidget().size()
                     w.grab().save(str(qa/"learning-universe.png"))
                     assert h.sky.export(str(qa/"universe-export.png"))
                     report=dict(success=True,platform=app.platformName(),
-                                calendar=True,archive=True,
+                                calendar=True,archive=True,immersive_sky=True,
                                 frozen=getattr(sys,"frozen",False),history_rows=1,tag_distribution=True,
                                 tray_available=w.tray.isSystemTrayAvailable())
                 except Exception:

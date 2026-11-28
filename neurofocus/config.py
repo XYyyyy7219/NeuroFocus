@@ -22,6 +22,7 @@ class Settings:
     pinned: bool = False
     notify: bool = True
     tray: bool = True
+    sky_low_motion: bool = False
     calendar_low: int = 30
     calendar_mid: int = 90
     calendar_high: int = 180

@@ -246,6 +246,8 @@ class Window(QMainWindow):
         self.refresh_tags()
 
     def navigate(self,index):
+        if index!=3 and not self.archive.stage.isHidden():
+            self.archive.stage.close_view()
         self.stack.setCurrentIndex(index)
         self.title.setText(("专注计时","学习统计","偏好设置","学习档案")[index])
         for i,b in enumerate(self.nav): b.setChecked(i==index)
@@ -255,6 +257,7 @@ class Window(QMainWindow):
         elif index==3:
             self.advance("flush")
             self.archive.refresh()
+            if self.archive.tabs.currentIndex()==2: self.archive.stage.open_view()
         self.render()
 
     def show_breakpoint(self):

@@ -7,6 +7,7 @@ from .archive_widgets import ActivityList,JournalEditor,Timeline
 from .history import activities,markdown,save_note,session_detail,wall_time,TITLES
 from .universe import Sky,layout_slots
 from .distribution import short_time
+from .observatory import Observatory
 from .widgets import box,label,button
 
 
@@ -54,35 +55,15 @@ class Archive(QWidget):
         for item in (self.range_on,self.first,label("至"),self.last): row.addWidget(item)
         row.addStretch()
         col.addWidget(self.periodbar)
-        self.skybar=QWidget()
-        row=box(self.skybar,horizontal=True)
-        row.addWidget(button("全景",handler=lambda:self.sky.enter(())))
-        self.up=button("上一级",handler=lambda:self.sky.enter(self.sky.scope[:-1]))
-        row.addWidget(self.up)
-        self.location=label("学科","muted")
-        row.addWidget(self.location,1)
-        self.sizes=QCheckBox("按时长缩放")
-        self.sizes.setChecked(True)
-        self.sizes.toggled.connect(self.set_sizes)
-        row.addWidget(self.sizes)
-        row.addWidget(button("导出图",handler=self.export_sky))
-        col.addWidget(self.skybar)
         self.timeline=Timeline()
         self.sky=Sky()
         self.timeline.picked.connect(self.select)
         self.sky.picked.connect(self.select)
         self.sky.changed.connect(self.breadcrumb)
         col.addWidget(self.timeline,3)
-        col.addWidget(self.sky,5)
-        self.playbar=QWidget()
-        row=box(self.playbar,horizontal=True)
         self.play=button("播放演化",handler=self.playback)
         self.slide=QSlider(Qt.Horizontal)
         self.cutoff=label("","muted")
-        row.addWidget(self.play)
-        row.addWidget(self.slide,1)
-        row.addWidget(self.cutoff)
-        col.addWidget(self.playbar)
         self.list=QListView()
         self.list.setUniformItemSizes(True)
         self.model=ActivityList()
@@ -111,6 +92,7 @@ class Archive(QWidget):
         for sig in (self.tag.currentIndexChanged,self.query.textChanged,self.mode.currentIndexChanged,
                     self.day.dateChanged,self.range_on.toggled,self.first.dateChanged,self.last.dateChanged,
                     self.tabs.currentChanged): sig.connect(self.filter_rows)
+        self.stage=Observatory(self)
         self.loading=False
 
     @staticmethod
@@ -134,25 +116,25 @@ class Archive(QWidget):
             self.tag.addItem("全部标签",None)
             for t in self.tags.values(): self.tag.addItem(t.name+(" · 已归档" if t.archived else ""),t.id)
             self.tag.setCurrentIndex(max(0,self.tag.findData(old)) if old is not None else 0)
-        self.filter_rows()
+        self.filter_rows(keep_playing=True)
 
-    def filter_rows(self,*_):
+    def filter_rows(self,*_,keep_playing=False):
         if self.loading or self.version is None: return
         tab=self.tabs.currentIndex()
         timeline,journal,sky=tab==0,tab==1,tab==2
         self.datebar.setVisible(timeline)
         self.periodbar.setVisible(not timeline)
-        self.skybar.setVisible(sky)
-        self.playbar.setVisible(sky)
+        if sky: self.stage.open_view()
+        elif not self.stage.isHidden(): self.stage.close_view()
         self.timeline.setVisible(timeline)
-        self.sky.setVisible(sky)
         self.actions[2].setVisible(not timeline)
         self.actions[3].setVisible(not sky)
         for b in self.actions[4:]: b.setVisible(journal)
         self.first.setEnabled(self.range_on.isChecked())
         self.last.setEnabled(self.range_on.isChecked())
-        self.ticker.stop()
-        self.play.setText("播放演化")
+        if not keep_playing or not sky:
+            self.ticker.stop()
+            self.play.setText("播放演化")
         start=self.day.date().toPython()
         n=7 if self.mode.currentIndex() else 1
         if n==7: start-=timedelta(days=start.weekday())
@@ -238,12 +220,10 @@ class Archive(QWidget):
 
     def breadcrumb(self):
         path=self.sky.scope
-        names=["学科"] if not path else [self.tags[path[0]].name]
-        if len(path)>1: names.append(path[1] or "未填写主题")
-        self.location.setText(" › ".join(names)[:36])
-        self.up.setEnabled(bool(path))
         if hasattr(self,"cut_rows"):
-            self.list_rows([a for a in self.cut_rows if (a.tag,a.note[0].strip())[:len(path)]==path])
+            rows=[a for a in self.cut_rows if (a.tag,a.note[0].strip())[:len(path)]==path]
+            self.list_rows(rows)
+            self.stage.sync(rows)
 
     def set_sizes(self,value):
         self.sky.weighted=value
